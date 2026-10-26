@@ -573,7 +573,9 @@ async function poll(u, body) {
 async function deposit(u, body) {
   const amount = Number(body.amount);
   if (!Number.isInteger(amount) || amount < DEPOSIT_MIN || amount > DEPOSIT_MAX) throw httpErr(400, "Сумма от " + DEPOSIT_MIN + " до " + DEPOSIT_MAX);
-  const j = await huevo("POST", "/payments", { user_id: u.id, amount, description: "Пополнение баланса Nullified Casino" });
+  // huEVO requires an idempotency key (1-64 chars), so a retried request never charges twice
+  const j = await huevo("POST", "/payments", { user_id: u.id, amount, description: "Пополнение баланса Nullified Casino", idempotency_key: "dep-" + crypto.randomUUID() })
+    .catch((e) => { throw httpErr(502, "huEVO: " + e.message); });
   const intent = j.intent_id || j.id || (j.payment && (j.payment.intent_id || j.payment.id)) || (j.intent && (j.intent.id || j.intent.intent_id));
   if (!intent) { console.warn("[deposit] no intent id in", JSON.stringify(j).slice(0, 400)); throw httpErr(502, "huEVO не вернул платёж"); }
   await pool.query(`INSERT INTO payments (intent_id, user_id, amount) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [intent, u.id, amount]);
@@ -605,7 +607,7 @@ async function withdraw(u, body) {
   const log = (ok, info) => pool.query(`INSERT INTO payouts (user_id, amount, ok, info) VALUES ($1, $2, $3, $4)`, [u.id, amount, ok, String(info).slice(0, 500)]);
   const paid = afterFee(amount);
   try {
-    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)" });
+    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)", idempotency_key: "out-" + crypto.randomUUID() });
     await log(true, JSON.stringify(j));
     return { ok: true, balance, paid };
   } catch (e) {
