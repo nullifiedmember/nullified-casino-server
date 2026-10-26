@@ -11,7 +11,7 @@
 //   HUEVO_CLIENT_ID, HUEVO_CLIENT_SECRET  app keys from huEVO (never commit them)
 //   DATABASE_URL       Neon Postgres connection string
 //   HUEVO_API          default https://huevo.su/api/apps/v1
-//   HUEVO_PAYOUT_PATH  payout method path, default /payouts (not documented by huEVO yet)
+//   HUEVO_PAYOUT_PATH  payout method path, default /credits (pays the player from the app wallet)
 //   HUEVO_VERIFY       strict | log - what to do when the launch signature does not check out
 //   ALLOWED_ORIGINS    comma list of game origins allowed to call the API
 "use strict";
@@ -21,7 +21,7 @@ const { Pool } = require("pg");
 const CLIENT_ID = process.env.HUEVO_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.HUEVO_CLIENT_SECRET || "";
 const HUEVO_API = (process.env.HUEVO_API || "https://huevo.su/api/apps/v1").replace(/\/$/, "");
-const PAYOUT_PATH = process.env.HUEVO_PAYOUT_PATH || "/payouts";
+const PAYOUT_PATH = process.env.HUEVO_PAYOUT_PATH || "/credits";
 const VERIFY = process.env.HUEVO_VERIFY || "strict";
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.io,http://localhost:8765").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -645,14 +645,24 @@ async function withdraw(u, body) {
   if (balance === null) throw httpErr(402, "На балансе нет столько монэток");
   const log = (ok, info) => pool.query(`INSERT INTO payouts (user_id, amount, ok, info) VALUES ($1, $2, $3, $4)`, [u.id, amount, ok, String(info).slice(0, 500)]);
   const paid = afterFee(amount);
+  const req = { user_id: u.hid, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)", test: !!u.test, idempotency_key: "out-" + crypto.randomUUID() };
+  // a lost connection does not tell whether huEVO paid, so the same request is sent again under the same
+  // idempotency key (huEVO pays it at most once); only a clear refusal from huEVO returns the coins
+  const send = () => huevo("POST", PAYOUT_PATH, req);
+  const unclear = (e) => !e.code || /^http_5/.test(e.code) || e.code === "internal" || e.code === "rate_limited";
   try {
-    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.hid, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)", test: !!u.test, idempotency_key: "out-" + crypto.randomUUID() });
+    const j = await send().catch((e) => { if (unclear(e)) return new Promise((r) => setTimeout(r, 1500)).then(send); throw e; });
     await log(true, JSON.stringify(j));
     return { ok: true, balance, paid };
   } catch (e) {
+    if (unclear(e)) {
+      await log(null, "unclear " + (e.code || "") + " " + e.message + " key " + req.idempotency_key);
+      throw httpErr(502, "huEVO не ответил. Монэтки списаны и будут выплачены или возвращены после проверки", { balance });
+    }
     const back = await change(pool, u.id, amount);
     await log(false, e.code + " " + e.message);
-    throw httpErr(502, e.code === "not_found" ? "Вывод пока недоступен" : "huEVO: " + e.message, { balance: back });
+    const msg = e.code === "insufficient_funds" || /кошел|недостат/i.test(e.message) ? "В кассе казино сейчас не хватает монэток, попробуй сумму поменьше" : "huEVO: " + e.message;
+    throw httpErr(502, msg, { balance: back });
   }
 }
 function callbackSignatureOk(raw, sig) {
