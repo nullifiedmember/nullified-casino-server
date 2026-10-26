@@ -27,6 +27,9 @@ const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.
 
 const BET_MIN = 10, BET_MAX = 95000;
 const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
+// the casino keeps 3% of every top-up and every withdrawal
+const CASH_FEE = 0.03;
+const afterFee = (amount) => Math.floor(amount * (1 - CASH_FEE));
 // share of every bet that comes back to players on average (return to player)
 const EDGE = 0.90;
 
@@ -584,9 +587,9 @@ async function settlePayment(intent) {
   return tx(async (c) => {
     const r = await c.query(`UPDATE payments SET credited = true WHERE intent_id = $1 AND credited = false RETURNING user_id, amount`, [intent]);
     if (!r.rows[0]) return { status: "succeeded", already: true };
-    const userId = Number(r.rows[0].user_id), amount = Number(r.rows[0].amount);
+    const userId = Number(r.rows[0].user_id), amount = afterFee(Number(r.rows[0].amount));
     const balance = await change(c, userId, amount);
-    console.log("[deposit] credited", amount, "to", userId);
+    console.log("[deposit] credited", amount, "of", r.rows[0].amount, "to", userId);
     return { status: "succeeded", credited: amount, userId, balance };
   });
 }
@@ -600,10 +603,11 @@ async function withdraw(u, body) {
   const balance = await change(pool, u.id, -amount);
   if (balance === null) throw httpErr(402, "На балансе нет столько монэток");
   const log = (ok, info) => pool.query(`INSERT INTO payouts (user_id, amount, ok, info) VALUES ($1, $2, $3, $4)`, [u.id, amount, ok, String(info).slice(0, 500)]);
+  const paid = afterFee(amount);
   try {
-    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount, description: "Вывод из Nullified Casino" });
+    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 3%)" });
     await log(true, JSON.stringify(j));
-    return { ok: true, balance };
+    return { ok: true, balance, paid };
   } catch (e) {
     const back = await change(pool, u.id, amount);
     await log(false, e.code + " " + e.message);
