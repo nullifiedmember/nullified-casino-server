@@ -27,8 +27,8 @@ const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.
 
 const BET_MIN = 10, BET_MAX = 95000;
 const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
-// the casino keeps 3% of every top-up and every withdrawal
-const CASH_FEE = 0.03;
+// the casino keeps 5% of every top-up and every withdrawal
+const CASH_FEE = 0.05;
 const afterFee = (amount) => Math.floor(amount * (1 - CASH_FEE));
 // share of every bet that comes back to players on average (return to player)
 const EDGE = 0.90;
@@ -605,7 +605,7 @@ async function withdraw(u, body) {
   const log = (ok, info) => pool.query(`INSERT INTO payouts (user_id, amount, ok, info) VALUES ($1, $2, $3, $4)`, [u.id, amount, ok, String(info).slice(0, 500)]);
   const paid = afterFee(amount);
   try {
-    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 3%)" });
+    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)" });
     await log(true, JSON.stringify(j));
     return { ok: true, balance, paid };
   } catch (e) {
