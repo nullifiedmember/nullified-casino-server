@@ -398,20 +398,28 @@ const upgSpin = (u, body) => tx(async (c) => {
 });
 
 // ---------- coffins ----------
-const COFFIN_PRICES = [100, 500, 2500, 10000, 50000];
-const LOOT = [[0.2, 30], [0.5, 25], [0.8, 18], [1.2, 12], [2, 8], [3, 4], [5, 2], [10, 0.8], [25, 0.2]];
+const COFFIN_PRICES = [10, 50, 200, 1000, 5000];
+// [price multiple, chance %]: the first four pay less than the case, the other five (27% together) pay it back or more;
+// the rarest, 0.1%, pays x27
+const LOOT = [[0.1, 25], [0.3, 22], [0.5, 16], [0.8, 10], [1.1, 15.2], [1.6, 7], [3, 3.4], [7, 1.3], [27, 0.1]];
 const LOOT_W = LOOT.reduce((a, [, w]) => a + w, 0);
 const LOOT_K = COFFIN_EDGE / (LOOT.reduce((a, [m, w]) => a + m * w, 0) / LOOT_W);
 const coffinOpen = (u, body) => tx(async (c) => {
   const ci = Number(body.coffin);
   if (!Number.isInteger(ci) || ci < 0 || ci >= COFFIN_PRICES.length) throw httpErr(400, "Неверный кейс");
+  // up to five cases of the same kind in one go; each one is drawn on its own
+  const n = body.count === undefined ? 1 : Number(body.count);
+  if (!Number.isInteger(n) || n < 1 || n > 5) throw httpErr(400, "Можно открыть от 1 до 5 кейсов");
   const price = COFFIN_PRICES[ci];
-  if ((await change(c, u.id, -price)) === null) throw httpErr(402, "Не хватает монэток на этот кейс");
-  const loot = weighted(LOOT.map(([, w], i) => [i, w]));
-  const pay = Math.round(price * LOOT[loot][0] * LOOT_K);
-  const balance = await change(c, u.id, pay);
-  if (pay > price) await pushWin(c, u.name, "Coffins", pay, pay / price);
-  return { loot, pay, balance };
+  if ((await change(c, u.id, -price * n)) === null) throw httpErr(402, n > 1 ? "Не хватает монэток на столько кейсов" : "Не хватает монэток на этот кейс");
+  const loots = [], pays = [];
+  for (let k = 0; k < n; k++) {
+    const loot = weighted(LOOT.map(([, w], i) => [i, w]));
+    loots.push(loot); pays.push(Math.round(price * LOOT[loot][0] * LOOT_K));
+  }
+  const balance = await change(c, u.id, pays.reduce((a, p) => a + p, 0));
+  for (const pay of pays) if (pay > price) await pushWin(c, u.name, "Coffins", pay, pay / price);
+  return { loot: loots[0], pay: pays[0], loots, pays, balance };
 });
 
 // ---------- crash: shared rounds kept in the database ----------
