@@ -144,7 +144,7 @@ function verifyLaunch(params) {
 // ---------- sessions: signed tokens, nothing kept in memory ----------
 const sessionKey = () => crypto.createHash("sha256").update("nullified-session:" + CLIENT_SECRET).digest();
 function makeToken(u) {
-  const p = Buffer.from(JSON.stringify({ id: u.id, name: u.name, exp: Date.now() + 7 * 864e5 })).toString("base64url");
+  const p = Buffer.from(JSON.stringify({ id: u.id, hid: u.hid, name: u.name, test: !!u.test, exp: Date.now() + 7 * 864e5 })).toString("base64url");
   return p + "." + crypto.createHmac("sha256", sessionKey()).update(p).digest("base64url");
 }
 function readToken(t) {
@@ -155,7 +155,7 @@ function readToken(t) {
   if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
   try {
     const u = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
-    return u.exp > Date.now() ? { id: u.id, name: u.name } : null;
+    return u.exp > Date.now() ? { id: u.id, hid: u.hid || Math.abs(u.id), name: u.name, test: !!u.test } : null;
   } catch { return null; }
 }
 
@@ -574,7 +574,7 @@ async function deposit(u, body) {
   const amount = Number(body.amount);
   if (!Number.isInteger(amount) || amount < DEPOSIT_MIN || amount > DEPOSIT_MAX) throw httpErr(400, "Сумма от " + DEPOSIT_MIN + " до " + DEPOSIT_MAX);
   // huEVO requires an idempotency key (1-64 chars), so a retried request never charges twice
-  const j = await huevo("POST", "/payments", { user_id: u.id, amount, description: "Пополнение баланса Nullified Casino", idempotency_key: "dep-" + crypto.randomUUID() })
+  const j = await huevo("POST", "/payments", { user_id: u.hid, amount, description: "Пополнение баланса Nullified Casino", test: !!u.test, idempotency_key: "dep-" + crypto.randomUUID() })
     .catch((e) => { throw httpErr(502, "huEVO: " + e.message); });
   const intent = j.intent_id || j.id || (j.payment && (j.payment.intent_id || j.payment.id)) || (j.intent && (j.intent.id || j.intent.intent_id));
   if (!intent) { console.warn("[deposit] no intent id in", JSON.stringify(j).slice(0, 400)); throw httpErr(502, "huEVO не вернул платёж"); }
@@ -607,7 +607,7 @@ async function withdraw(u, body) {
   const log = (ok, info) => pool.query(`INSERT INTO payouts (user_id, amount, ok, info) VALUES ($1, $2, $3, $4)`, [u.id, amount, ok, String(info).slice(0, 500)]);
   const paid = afterFee(amount);
   try {
-    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.id, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)", idempotency_key: "out-" + crypto.randomUUID() });
+    const j = await huevo("POST", PAYOUT_PATH, { user_id: u.hid, amount: paid, description: "Вывод из Nullified Casino (комиссия 5%)", test: !!u.test, idempotency_key: "out-" + crypto.randomUUID() });
     await log(true, JSON.stringify(j));
     return { ok: true, balance, paid };
   } catch (e) {
@@ -636,8 +636,11 @@ async function login(body) {
     if (VERIFY === "strict") throw httpErr(401, "Не удалось проверить вход через huEVO");
   } else console.log("[login] signature ok, scheme", v.scheme);
   const name = String(launch.hu_display_name || launch.hu_username || "Игрок " + id).slice(0, 40);
-  const r = await pool.query(`INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING balance`, [id, name]);
-  return { token: makeToken({ id, name }), user: { id, name }, balance: Number(r.rows[0].balance), test: launch.hu_mode === "test", wins: await winsSince(0) };
+  // test launches play on a separate balance (stored under the negative id): test coins cost nothing,
+  // so they must never mix with real ones or be paid out for real
+  const test = launch.hu_mode === "test", uid = test ? -id : id;
+  const r = await pool.query(`INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING balance`, [uid, name]);
+  return { token: makeToken({ id: uid, hid: id, name, test }), user: { id: uid, name }, balance: Number(r.rows[0].balance), test, wins: await winsSince(0) };
 }
 
 // ---------- HTTP ----------
