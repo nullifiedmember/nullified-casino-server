@@ -1,3 +1,4 @@
 {
+  "regions": ["cle1"],
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }
