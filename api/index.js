@@ -31,7 +31,9 @@ const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
 const CASH_FEE = 0.05;
 const afterFee = (amount) => Math.floor(amount * (1 - CASH_FEE));
 // share of every bet that comes back to players on average (return to player)
-const EDGE = 0.90;
+const EDGE = 0.85;
+// cases keep more: on average 75% of the price comes back
+const COFFIN_EDGE = 0.75;
 
 // ---------- randomness ----------
 const rnd = () => crypto.randomBytes(6).readUIntBE(0, 6) / 2 ** 48;
@@ -399,7 +401,7 @@ const upgSpin = (u, body) => tx(async (c) => {
 const COFFIN_PRICES = [100, 500, 2500, 10000, 50000];
 const LOOT = [[0.2, 30], [0.5, 25], [0.8, 18], [1.2, 12], [2, 8], [3, 4], [5, 2], [10, 0.8], [25, 0.2]];
 const LOOT_W = LOOT.reduce((a, [, w]) => a + w, 0);
-const LOOT_K = EDGE / (LOOT.reduce((a, [m, w]) => a + m * w, 0) / LOOT_W);
+const LOOT_K = COFFIN_EDGE / (LOOT.reduce((a, [m, w]) => a + m * w, 0) / LOOT_W);
 const coffinOpen = (u, body) => tx(async (c) => {
   const ci = Number(body.coffin);
   if (!Number.isInteger(ci) || ci < 0 || ci >= COFFIN_PRICES.length) throw httpErr(400, "Неверный кейс");
