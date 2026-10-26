@@ -48,7 +48,7 @@ function httpErr(status, message, extra) { const e = new Error(message); e.statu
 // ---------- database ----------
 const DB_URL = process.env.DATABASE_URL || "";
 const pool = DB_URL ? new Pool({ connectionString: DB_URL, ssl: /localhost|127\.0\.0\.1/.test(DB_URL) ? false : { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10000 }) : null;
-const DUEL_STAKES = [100, 500, 1000, 5000, 25000, 95000], DUEL_FEE = 1 - EDGE;
+const DUEL_STAKES = [100, 500, 1000, 5000, 25000, 95000], DUEL_FEE = 1 - EDGE, DUEL_LEAD_MS = 2500;
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, name TEXT, balance BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now());
 CREATE TABLE IF NOT EXISTS payments (intent_id TEXT PRIMARY KEY, user_id BIGINT, amount BIGINT, credited BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ DEFAULT now());
@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS games (user_id BIGINT, kind TEXT, state JSONB, PRIMAR
 CREATE TABLE IF NOT EXISTS wins (id BIGSERIAL PRIMARY KEY, name TEXT, game TEXT, amount BIGINT, mult REAL, at BIGINT);
 CREATE TABLE IF NOT EXISTS crash_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, fly_start BIGINT, crash_at BIGINT, ends BIGINT, point NUMERIC(10,2), settled BOOLEAN NOT NULL DEFAULT false);
 CREATE TABLE IF NOT EXISTS crash_bets (round_id BIGINT, user_id BIGINT, name TEXT, bet BIGINT, auto NUMERIC(10,2) NOT NULL DEFAULT 0, cashed NUMERIC(10,2), PRIMARY KEY (round_id, user_id));
+ALTER TABLE crash_bets ADD COLUMN IF NOT EXISTS cashed_at BIGINT;
 CREATE TABLE IF NOT EXISTS duel_rooms (stake BIGINT PRIMARY KEY, user_id BIGINT, name TEXT, since BIGINT);
 CREATE TABLE IF NOT EXISTS duel_events (id BIGSERIAL PRIMARY KEY, user_id BIGINT, data JSONB, seen BOOLEAN NOT NULL DEFAULT false);
 INSERT INTO duel_rooms (stake) VALUES ${DUEL_STAKES.map((s) => "(" + s + ")").join(",")} ON CONFLICT DO NOTHING;`;
@@ -416,6 +417,11 @@ const coffinOpen = (u, body) => tx(async (c) => {
 // bat falls. Whoever polls first after a round ends creates the next one. The flight is timed from fly_start,
 // so every player sees the same multiplier at the same moment.
 const CRASH_K = 0.14, CRASH_BET_MS = 6000, CRASH_PAUSE_MS = 3000, CRASH_MAX = 1000;
+// Grace for the network: a player's screen runs a little behind the server, so "Забрать" may arrive after the
+// real crash moment. For CRASH_GRACE_MS after it the round still reads as flying to everyone, the crash point
+// stays secret, and a cash-out is paid at the multiplier the player saw, if that was below the crash point.
+// Nobody can learn the point before cash-outs close, so the grace gives no edge to anyone.
+const CRASH_GRACE_MS = 1200;
 const crashPoint = () => Math.min(CRASH_MAX, Math.max(1, Math.floor(EDGE / (1 - rnd()) * 100) / 100));
 const multAt = (r, now) => (now <= r.flyStart ? 1 : Math.exp(CRASH_K * (now - r.flyStart) / 1000));
 const toRound = (x) => ({ id: Number(x.id), betEnds: Number(x.bet_ends), flyStart: Number(x.fly_start), crashAt: Number(x.crash_at),
@@ -429,7 +435,7 @@ async function crashCurrent() {
     const start = last && now - last.ends < 2000 ? last.ends : now;
     const point = crashPoint(), betEnds = start + CRASH_BET_MS, crashAt = betEnds + Math.round(Math.log(point) / CRASH_K * 1000);
     await pool.query(`INSERT INTO crash_rounds (id, bet_ends, fly_start, crash_at, ends, point) VALUES ($1, $2, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
-      [last ? last.id + 1 : 1, betEnds, crashAt, crashAt + CRASH_PAUSE_MS, point]);
+      [last ? last.id + 1 : 1, betEnds, crashAt, crashAt + CRASH_GRACE_MS + CRASH_PAUSE_MS, point]);
     if (last && rnd() < 0.01) {
       await pool.query(`DELETE FROM crash_bets WHERE round_id < $1`, [last.id - 5000]);
       await pool.query(`DELETE FROM crash_rounds WHERE id < $1`, [last.id - 5000]);
@@ -437,44 +443,51 @@ async function crashCurrent() {
   }
   throw httpErr(503, "Раунд не создался, попробуй ещё раз");
 }
-// pay the auto cash-outs that the flight has already passed
-async function crashAutos(c, round, upTo) {
-  const r = await c.query(`UPDATE crash_bets SET cashed = auto WHERE round_id = $1 AND cashed IS NULL AND auto > 0 AND auto <= $2 AND auto < $3
-    RETURNING user_id, name, bet, auto`, [round.id, upTo, round.point]);
-  for (const b of r.rows) {
-    const win = Math.floor(Number(b.bet) * Number(b.auto));
-    await change(c, Number(b.user_id), win);
-    await pushWin(c, b.name, "Crash", win, Number(b.auto));
-  }
-}
-async function crashSettle(cur) {
+// Once a round is over (grace included): pay the auto cash-outs below the crash point and put every
+// Crash win of the round on the ticker. Nothing about the round leaves the server any earlier.
+async function crashSettle() {
   const now = Date.now();
-  if (now >= cur.flyStart && now < cur.crashAt) await tx((c) => crashAutos(c, cur, multAt(cur, now)));
-  const open = await pool.query(`SELECT * FROM crash_rounds WHERE NOT settled AND crash_at <= $1 ORDER BY id LIMIT 3`, [now]);
+  const open = await pool.query(`SELECT * FROM crash_rounds WHERE NOT settled AND crash_at <= $1 ORDER BY id LIMIT 3`, [now - CRASH_GRACE_MS]);
   for (const row of open.rows) {
     const round = toRound(row);
     await tx(async (c) => {
       const s = await c.query(`UPDATE crash_rounds SET settled = true WHERE id = $1 AND NOT settled RETURNING id`, [round.id]);
-      if (s.rows[0]) await crashAutos(c, round, round.point);
+      if (!s.rows[0]) return;
+      const autos = await c.query(`UPDATE crash_bets SET cashed = auto, cashed_at = $3 WHERE round_id = $1 AND cashed IS NULL AND auto > 0 AND auto < $2
+        RETURNING user_id`, [round.id, round.point, now]);
+      const paid = new Set(autos.rows.map((b) => Number(b.user_id)));
+      const wins = await c.query(`SELECT user_id, name, bet, cashed FROM crash_bets WHERE round_id = $1 AND cashed > 0`, [round.id]);
+      for (const b of wins.rows) {
+        const win = Math.floor(Number(b.bet) * Number(b.cashed));
+        if (paid.has(Number(b.user_id))) await change(c, Number(b.user_id), win);
+        await pushWin(c, b.name, "Crash", win, Number(b.cashed));
+      }
     });
   }
 }
 async function crashState(u) {
   const cur = await crashCurrent();
-  await crashSettle(cur);
-  const now = Date.now(), m = multAt(cur, now);
-  const phase = now < cur.betEnds ? "bet" : now < cur.crashAt ? "fly" : "crashed";
+  await crashSettle();
+  const now = Date.now(), seen = now - CRASH_GRACE_MS;
+  const over = now >= cur.crashAt + CRASH_GRACE_MS;
+  const phase = now < cur.betEnds ? "bet" : over ? "crashed" : "fly";
   const [bets, hist, queued] = await Promise.all([
-    pool.query(`SELECT user_id, name, bet, auto, cashed FROM crash_bets WHERE round_id = $1 ORDER BY bet DESC LIMIT 50`, [cur.id]),
-    pool.query(`SELECT point FROM crash_rounds WHERE crash_at <= $1 ORDER BY id DESC LIMIT 8`, [now]),
+    pool.query(`SELECT user_id, name, bet, auto, cashed, cashed_at FROM crash_bets WHERE round_id = $1 ORDER BY bet DESC LIMIT 50`, [cur.id]),
+    pool.query(`SELECT point FROM crash_rounds WHERE crash_at <= $1 ORDER BY id DESC LIMIT 8`, [seen]),
     pool.query(`SELECT 1 FROM crash_bets WHERE round_id = $1 AND user_id = $2`, [cur.id + 1, u.id]),
   ]);
+  // Others' cash-outs show up only GRACE late (as late as the flight itself may be), so the list never tells
+  // anyone more about the crash point than the flight they are watching.
+  const mSeen = multAt(cur, seen);
   const players = bets.rows.map((b) => {
-    const auto = Number(b.auto);
-    const cashed = b.cashed !== null ? Number(b.cashed) : auto > 0 && auto < cur.point && auto <= m ? auto : 0;
+    const me = Number(b.user_id) === u.id, auto = Number(b.auto);
+    let cashed = 0;
+    const done = b.cashed !== null && (over || me || Number(b.cashed_at) <= seen);
+    if (done) cashed = Math.max(0, Number(b.cashed));                       // -1: too late, burnt
+    else if (auto > 0 && (over ? auto < cur.point : auto <= mSeen)) cashed = auto;
     return { id: Number(b.user_id), name: b.name, bet: Number(b.bet), cashed };
   });
-  return { id: cur.id, phase, betEnds: cur.betEnds, flyStart: cur.flyStart, now, point: phase === "crashed" ? cur.point : null,
+  return { id: cur.id, phase, betEnds: cur.betEnds, flyStart: cur.flyStart, now, point: over ? cur.point : null,
     hist: hist.rows.map((h) => Number(h.point)), players, queued: !!queued.rows[0] };
 }
 async function crashBet(u, body) {
@@ -492,18 +505,31 @@ async function crashBet(u, body) {
     return { balance, queued: target !== cur.id };
   });
 }
-async function crashCash(u) {
+// body.m is the multiplier on the player's screen when they pressed: it is paid if it is below the crash
+// point, never more than the flight has reached on the server, and only until the grace runs out.
+async function crashCash(u, body) {
   const cur = await crashCurrent();
   return tx(async (c) => {
     const now = Date.now();
-    if (now < cur.flyStart || now >= cur.crashAt) throw httpErr(409, "Мышь уже сбита");
-    const m = Math.floor(multAt(cur, now) * 100) / 100;
-    if (m >= cur.point) throw httpErr(409, "Мышь уже сбита");
-    const r = await c.query(`UPDATE crash_bets SET cashed = $3 WHERE round_id = $1 AND user_id = $2 AND cashed IS NULL RETURNING bet`, [cur.id, u.id, m]);
+    if (now < cur.flyStart || now >= cur.crashAt + CRASH_GRACE_MS) throw httpErr(409, "Мышь уже сбита");
+    const seen = Number(body.m) > 0 ? Number(body.m) : Infinity;
+    const m = Math.floor(Math.min(seen, multAt(cur, now)) * 100) / 100;
+    if (m < 1 || m >= cur.point) {
+      // too late: the bet is burnt on the spot (its auto cash-out still counts if the bat passed it),
+      // so a refused try cannot be repeated to feel out where the crash point is
+      const b = await c.query(`UPDATE crash_bets SET cashed = CASE WHEN auto > 0 AND auto < $3 THEN auto ELSE -1 END, cashed_at = $4
+        WHERE round_id = $1 AND user_id = $2 AND cashed IS NULL RETURNING bet, cashed`, [cur.id, u.id, cur.point, now]);
+      if (b.rows[0] && Number(b.rows[0].cashed) > 0) {
+        const balance = await change(c, u.id, Math.floor(Number(b.rows[0].bet) * Number(b.rows[0].cashed)));
+        return { balance, cashed: Number(b.rows[0].cashed), win: Math.floor(Number(b.rows[0].bet) * Number(b.rows[0].cashed)) };
+      }
+      throw httpErr(409, "Мышь уже сбита");
+    }
+    const r = await c.query(`UPDATE crash_bets SET cashed = $3, cashed_at = $4 WHERE round_id = $1 AND user_id = $2 AND cashed IS NULL RETURNING bet`,
+      [cur.id, u.id, m, now]);
     if (!r.rows[0]) throw httpErr(409, "Нет ставки в этом раунде");
     const win = Math.floor(Number(r.rows[0].bet) * m);
-    const balance = await change(c, u.id, win);
-    await pushWin(c, u.name, "Crash", win, m);
+    const balance = await change(c, u.id, win);   // the ticker gets it when the round is over
     return { balance, cashed: m, win };
   });
 }
@@ -537,9 +563,11 @@ const duelJoin = (u, body) => tx(async (c) => {
   const winner = joinerDies ? waiter : u, prize = Math.floor(stake * 2 * (1 - DUEL_FEE));
   const wb = await change(c, winner.id, prize);
   await pushWin(c, winner.name, "Duel", prize);
-  // the waiting player learns the outcome on their next poll
-  await c.query(`INSERT INTO duel_events (user_id, data) VALUES ($1, $2)`, [waiter.id, JSON.stringify({ stake, opp: u.name, youDie: !joinerDies, prize })]);
-  return { match: { stake, opp: waiter.name, youDie: joinerDies, prize }, balance: joinerDies ? balance : wb };
+  // the waiting player learns the outcome on their next poll (once a second while waiting), so both scenes
+  // start together at startAt by the server clock
+  const startAt = Date.now() + DUEL_LEAD_MS;
+  await c.query(`INSERT INTO duel_events (user_id, data) VALUES ($1, $2)`, [waiter.id, JSON.stringify({ stake, opp: u.name, youDie: !joinerDies, prize, startAt })]);
+  return { match: { stake, opp: waiter.name, youDie: joinerDies, prize, startAt }, balance: joinerDies ? balance : wb, now: Date.now() };
 });
 const duelLeave = (u) => tx(async (c) => {
   const r = await c.query(`UPDATE duel_rooms SET user_id = NULL, name = NULL, since = NULL WHERE user_id = $1 RETURNING stake`, [u.id]);
@@ -562,10 +590,11 @@ async function duelState(u) {
 async function poll(u, body) {
   const out = {};
   if (body.crash) out.crash = await crashState(u);
-  else await crashSettle(await crashCurrent());   // auto cash-outs still get paid while the player is elsewhere
+  else { await crashCurrent(); await crashSettle(); }   // auto cash-outs still get paid while the player is elsewhere
   if (body.duel) out.duel = await duelState(u);
   out.wins = await winsSince(body.since);
   out.balance = await balanceOf(pool, u.id);
+  out.now = Date.now();
   return out;
 }
 
