@@ -1,0 +1,3321 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Nullified Casino</title>
+<!-- async: huevo.su can take seconds to answer from far away, and the game must not wait for it.
+     Sign-in reads the hu_* params from the page address, the SDK is only needed for payments. -->
+<script async src="https://huevo.su/static/js/huevo-apps-v1.js" data-origins="huevo.lol"
+  onload="try { huevo.init().catch(() => {}); } catch {}"></script>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 13' shape-rendering='crispEdges'%3E%3Crect width='13' height='13' fill='%23111'/%3E%3Cg fill='%23e6e6e6'%3E%3Crect x='1' y='3' width='1' height='1'/%3E%3Crect x='11' y='3' width='1' height='1'/%3E%3Crect x='1' y='4' width='2' height='1'/%3E%3Crect x='10' y='4' width='2' height='1'/%3E%3Crect x='1' y='5' width='3' height='1'/%3E%3Crect x='9' y='5' width='3' height='1'/%3E%3Crect x='2' y='6' width='4' height='1'/%3E%3Crect x='7' y='6' width='4' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='8' y='7' width='1' height='1'/%3E%3Crect x='5' y='8' width='3' height='1'/%3E%3Crect x='5' y='9' width='1' height='1'/%3E%3Crect x='7' y='9' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23c01c1c'%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Cormorant+Garamond:wght@500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cell: min(19.5vh, 12.6vw, 170px);
+    --gap: calc(var(--cell) * .06);
+    --stone: #161616;
+    --stone-hi: #2a2a2a;
+    --edge: #5a5a5a;
+    --silver: #d9d9d9;
+    --fog: rgba(235, 235, 235, .9);
+    --blood: #8e1b1b;
+    --frak: "UnifrakturMaguntia", "Old English Text MT", serif;
+    --serif: "Cormorant Garamond", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--serif); color: var(--silver); overflow: hidden; user-select: none;
+    background: radial-gradient(ellipse at 50% 0%, #f2f2f2 0%, #bdbdbd 22%, #4a4a4a 55%, #0b0b0b 85%);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* backdrop: cathedral silhouette and drifting fog */
+  .backdrop { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .backdrop svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 92%; }
+  /* the softness comes from the gradients themselves: a live blur over four full-width layers cost a
+     full-screen filter pass every frame and made the game stutter inside the huEVO frame */
+  .fog { position: absolute; left: -50%; width: 200%; height: 45%; opacity: .55;
+    background: radial-gradient(ellipse at 25% 50%, var(--fog), color-mix(in srgb, var(--fog) 35%, transparent) 35%, transparent 68%),
+      radial-gradient(ellipse at 75% 60%, var(--fog), color-mix(in srgb, var(--fog) 35%, transparent) 32%, transparent 64%);
+    animation: drift 38s linear infinite alternate; will-change: transform; }
+  .fog.f1 { top: 8%; }
+  .fog.f2 { top: 48%; opacity: .5; animation-duration: 55s; animation-direction: alternate-reverse; }
+  .fog.f4 { top: 30%; height: 35%; opacity: .4; animation-duration: 46s; }
+  .fog.f3 { bottom: -10%; height: 35%; opacity: .5; animation-duration: 70s; }
+  @keyframes drift { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+
+  /* dragons: far away inside the backdrop, under the fog and behind the crows; not clickable */
+  .dragons { position: absolute; inset: 0; pointer-events: none; }
+  .dragon { position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; opacity: .6;
+    will-change: transform; }
+  /* crows: above the backdrop, below the games; each crow is clickable */
+  .crows { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .crow { position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; pointer-events: auto;
+    cursor: crosshair; will-change: transform; transform-origin: 50% 100%; }
+  .feather { position: absolute; left: 0; top: 0; width: 4px; height: 4px; background: #070707; pointer-events: none;
+    animation: feather 1.1s ease-out forwards; }
+  .drop { position: fixed; left: 0; top: 0; width: 4px; height: 6px; background: #b01818; box-shadow: 0 0 0 1px #3a0505;
+    pointer-events: none; z-index: 30; animation: drop 1.1s cubic-bezier(.5,0,1,1) forwards; }
+  @keyframes drop { 0% { transform: translate(var(--dx), var(--dy)) scaleY(.4); } 18% { transform: translate(var(--dx), var(--dy)) scaleY(1); }
+    85% { opacity: 1; } 100% { transform: translate(var(--dx), calc(var(--dy) + 140px)) scaleY(1.4); opacity: 0; } }
+  @keyframes feather { to { transform: translate(var(--fx), var(--fy)) rotate(200deg); opacity: 0; } }
+
+  /* layout: big reels with a side panel (landscape), stacked on narrow screens */
+  .stage { position: relative; z-index: 1; display: flex; align-items: center; gap: calc(var(--cell) * .22); }
+  .nave { position: relative; padding-top: calc(var(--cell) * .62); }
+  .arch, .nave canvas.px { position: absolute; left: -10px; right: -10px; top: 0; width: calc(100% + 20px); height: calc(var(--cell) * .64); pointer-events: none; }
+  .reels { position: relative; display: grid; grid-template-columns: repeat(5, var(--cell)); gap: var(--gap); padding: var(--gap);
+    background: linear-gradient(#1c1c1c, #0d0d0d); border: 2px solid var(--edge); border-top: 0;
+    box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85), inset 0 0 40px rgba(0,0,0,.9); }
+  .reel { height: calc(var(--cell) * 3); overflow: hidden; position: relative;
+    background: linear-gradient(90deg, #0e0e0e, #1d1d1d 50%, #0e0e0e); box-shadow: inset 0 0 0 1px #333, inset 0 0 25px #000; }
+  .reel::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(#000 0%, transparent 14%, transparent 86%, #000 100%); opacity: .7; }
+  .strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+  /* reels already rolling while the server draws the result */
+  .strip.prespin { animation: prespin .45s linear infinite; }
+  @keyframes prespin { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+  .cell { height: var(--cell); display: flex; align-items: center; justify-content: center; position: relative;
+    font-size: calc(var(--cell) * .58); line-height: 1; }
+  .cell .g { filter: grayscale(1) contrast(1.25) brightness(1.15) drop-shadow(0 0 10px rgba(255,255,255,.25)); }
+  .cell.royal { font-family: var(--frak); font-size: calc(var(--cell) * .6); color: #e8e8e8;
+    text-shadow: 0 0 12px rgba(255,255,255,.35), 0 2px 0 #000; }
+  .cell.royal.r-T { font-size: calc(var(--cell) * .46); }
+  /* wild: a stained-glass lancet window */
+  .cell.wild .glass { width: 62%; height: 84%; position: relative;
+    clip-path: polygon(50% 0, 78% 10%, 96% 32%, 100% 45%, 100% 100%, 0 100%, 0 45%, 4% 32%, 22% 10%);
+    background:
+      linear-gradient(90deg, transparent 48%, #111 48% 52%, transparent 52%),
+      linear-gradient(transparent 55%, #111 55% 58%, transparent 58%),
+      conic-gradient(from 200deg at 50% 70%, #f5f5f5, #8a8a8a, #e0e0e0, #5c5c5c, #cfcfcf, #9a9a9a, #f5f5f5);
+    box-shadow: inset 0 0 0 4px #111; }
+  .cell.wild { filter: drop-shadow(0 0 14px rgba(255,255,255,.55)); }
+  .cell.wild .tag { position: absolute; bottom: 4%; font-family: var(--frak); font-size: calc(var(--cell) * .2); color: #fff; text-shadow: 0 0 6px #000, 0 0 2px #000; }
+  .cell.wild .mult { position: absolute; top: 6%; right: 8%; font-family: var(--serif); font-weight: 700; font-size: calc(var(--cell) * .18);
+    color: #fff; background: var(--blood); border: 1px solid #c94a4a; padding: 0 5px; }
+  .cell.scatter { flex-direction: column; }
+  .cell.scatter .g { font-size: calc(var(--cell) * .5); }
+  .cell.scatter .tag { font-family: var(--frak); font-size: calc(var(--cell) * .17); color: #fff; margin-top: 2px; text-shadow: 0 0 8px #fff; }
+  .cell.scatter::before { content: ""; position: absolute; inset: 12%; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 70%); }
+  .cell.win { animation: glow .55s ease-in-out infinite alternate; z-index: 1; }
+  .cell.sticky::after { content: ""; position: absolute; inset: 4px; border: 2px solid var(--blood); box-shadow: 0 0 10px var(--blood), inset 0 0 10px var(--blood); }
+  @keyframes glow { from { transform: scale(1); filter: brightness(1); } to { transform: scale(1.07); filter: brightness(1.5) drop-shadow(0 0 14px #fff); } }
+
+  /* side panel */
+  .side { width: calc(var(--cell) * 1.75); display: flex; flex-direction: column; gap: calc(var(--cell) * .1); }
+  .title { text-align: center; font-family: var(--frak); color: #f3f3f3; font-size: calc(var(--cell) * .42); line-height: .95;
+    text-shadow: 0 0 18px rgba(255,255,255,.55), 0 3px 0 #000; }
+  .title small { display: block; font-family: var(--serif); font-size: .34em; letter-spacing: .25em; text-transform: uppercase; color: #bdbdbd; margin-top: 4px; }
+  .plate { background: linear-gradient(#202020, #111); border: 1px solid var(--edge); padding: 6px 10px; text-align: center; box-shadow: inset 0 0 12px #000; }
+  .plate .lbl { font-size: calc(var(--cell) * .11); letter-spacing: .2em; text-transform: uppercase; color: #9a9a9a; }
+  .plate .val { font-family: var(--serif); font-weight: 700; font-size: calc(var(--cell) * .24); color: #fff; }
+  .betctl { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  button { font-family: var(--serif); font-weight: 700; cursor: pointer; color: #eee; border: 1px solid var(--edge);
+    background: linear-gradient(#2c2c2c, #141414); }
+  button:disabled { opacity: .4; cursor: default; }
+  .betctl button { width: calc(var(--cell) * .3); height: calc(var(--cell) * .3); font-size: calc(var(--cell) * .2); }
+  .spin { height: calc(var(--cell) * .62); font-family: var(--frak); font-size: calc(var(--cell) * .3); letter-spacing: 1px; color: #fff;
+    clip-path: polygon(50% 0, 75% 12%, 92% 32%, 100% 55%, 100% 100%, 0 100%, 0 55%, 8% 32%, 25% 12%);
+    background: linear-gradient(#5a5a5a, #1a1a1a); border: 0; text-shadow: 0 0 10px #fff; padding-top: 6%; }
+  .spin:not(:disabled):hover { background: linear-gradient(#7a7a7a, #222); }
+  .row { display: flex; gap: 6px; }
+  .row button { flex: 1; height: calc(var(--cell) * .3); font-size: calc(var(--cell) * .13); letter-spacing: .15em; }
+  .row button.on { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  .betquick button { height: calc(var(--cell) * .24); }
+  .msg { min-height: calc(var(--cell) * .3); text-align: center; font-size: calc(var(--cell) * .14); color: #fff; text-shadow: 0 0 8px #000, 0 0 2px #000; }
+
+  .fsbar { display: none; position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 5; white-space: nowrap;
+    background: linear-gradient(#3a0d0d, #1a0505); color: #fff; padding: 4px 18px; border: 1px solid #c94a4a; font-family: var(--frak); font-size: 20px; }
+  .fsbar.on { display: block; }
+  .test { position: fixed; bottom: 8px; left: 8px; z-index: 5; font-size: 12px; letter-spacing: .1em; background: rgba(0,0,0,.6); padding: 3px 8px; color: #aaa; }
+  .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); z-index: 10; }
+  .modal.on { display: flex; }
+  .card { background: linear-gradient(#1d1d1d, #0c0c0c); color: var(--silver); border: 1px solid var(--edge); padding: 20px 26px;
+    max-width: min(600px, 92vw); max-height: 86vh; overflow: auto; box-shadow: 0 0 60px rgba(255,255,255,.08); font-size: 17px; }
+  .card h2 { margin: 0 0 10px; font-family: var(--frak); font-weight: 400; font-size: 34px; color: #fff; }
+  .card button { padding: 6px 20px; font-size: 16px; }
+  .pt { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; }
+  .pt .s { font-size: 28px; text-align: center; font-family: var(--frak); }
+  .pt .s.g { filter: grayscale(1) contrast(1.25) brightness(1.15); }
+  .big { font-size: 46px; text-align: center; color: #fff; font-family: var(--frak); text-shadow: 0 0 16px rgba(255,255,255,.5); }
+
+  /* lo-fi look: chunky pixels, film grain, scanlines */
+  .spr { width: 74%; height: 74%; image-rendering: pixelated; image-rendering: crisp-edges; pointer-events: none; }
+  .cell.scatter .spr { width: 58%; height: 58%; }
+  .cell.wild .spr { width: 70%; height: 86%; }
+  canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  .backdrop canvas.px { position: absolute; left: 0; bottom: 0; width: 100%; height: 92%; }
+  .title canvas.px { width: 100%; height: auto; }
+  .plate, button:not(.spin), .msg, .card, .fsbar, .test, .cell .tag, .cell .mult, .title small {
+    font-family: "Press Start 2P", monospace !important; letter-spacing: 0 !important; -webkit-font-smoothing: none; font-weight: 400 !important; }
+  .plate .lbl { font-size: calc(var(--cell) * .075); margin-bottom: 4px; }
+  .plate .val { font-size: calc(var(--cell) * .15); }
+  .cell .tag { font-size: calc(var(--cell) * .085) !important; bottom: 3% !important; }
+  .cell .mult { font-size: calc(var(--cell) * .11) !important; padding: 3px 4px !important; }
+  .row button { font-size: calc(var(--cell) * .075) !important; }
+  .msg { font-size: calc(var(--cell) * .08) !important; line-height: 1.6; }
+  .title small { font-size: calc(var(--cell) * .075) !important; line-height: 1.5; }
+  .card { font-size: 11px; line-height: 1.8; }
+  .card h2 { font-size: 26px; }
+  .fsbar { font-size: 12px; padding: 8px 16px; }
+  .test { font-size: 9px; }
+  .lofi { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+  /* grain: a static pre-rendered noise tile (set from JS) */
+  .grain { opacity: .1; }
+  .scan { background: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,.28) 2px 4px); }
+  .vignette { background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%); }
+
+  /* screens: hub, slots, mines */
+  .view { display: none !important; }
+  .view.on { display: flex !important; }
+  .back { height: calc(var(--cell) * .26); font-size: calc(var(--cell) * .075) !important; }
+
+  .hub { position: relative; z-index: 1; flex-direction: column; align-items: center; gap: 3vh; }
+  .hub .logo canvas.px { width: min(34vh, 30vw); height: auto; filter: drop-shadow(0 0 3px #000) drop-shadow(0 0 12px #000); }
+  .hub .logo small { text-shadow: 0 0 4px #000, 0 0 8px #000; }
+  .title canvas.px { filter: drop-shadow(0 0 3px #000) drop-shadow(0 0 10px #000); }
+  .hub .logo small { display: block; text-align: center; font-family: "Press Start 2P", monospace; font-size: min(1.4vh, 1.1vw); color: #cfcfcf; margin-top: 1vh; }
+  .doors { display: flex; gap: 3.5vw; }
+  /* game carousel: arrows page through the doors, DOORS_PER_PAGE at a time */
+  .carousel { display: flex; align-items: center; gap: 2vw; }
+  .arrow { width: min(4.5vw, 6vh); height: min(12vw, 16vh); padding: 0; font-family: "Press Start 2P", monospace !important;
+    font-size: min(2.2vw, 3vh) !important; color: #fff; background: linear-gradient(#2c2c2c, #0e0e0e); border: 2px solid var(--edge);
+    box-shadow: 0 0 0 4px #0a0a0a, 0 0 24px rgba(0,0,0,.8); }
+  .arrow:not(:disabled):hover { background: linear-gradient(#4a4a4a, #161616); }
+  .arrow:disabled { opacity: .5; }
+  .doors.turn { animation: turn .25s ease-out; }
+  @keyframes turn { from { opacity: 0; transform: translateX(var(--from, 0)); } to { opacity: 1; transform: none; } }
+  .door { width: min(22vw, 30vh); height: min(31vw, 44vh); cursor: pointer; border: 0; padding: 0 0 4%;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1.2vh;
+    background: linear-gradient(#262626, #0b0b0b); position: relative; transition: filter .2s, transform .2s;
+    clip-path: polygon(50% 0, 78% 9%, 95% 28%, 100% 45%, 100% 100%, 0 100%, 0 45%, 5% 28%, 22% 9%); }
+  .door::before { content: ""; position: absolute; inset: 6px;
+    clip-path: polygon(50% 0, 78% 9%, 95% 28%, 100% 45%, 100% 100%, 0 100%, 0 45%, 5% 28%, 22% 9%);
+    border: 0; background: radial-gradient(ellipse at 50% 30%, rgba(255,255,255,.14), transparent 65%); }
+  .door:hover { filter: brightness(1.35); transform: translateY(-4px); }
+  .door img { width: 44%; image-rendering: pixelated; margin-bottom: 2vh; position: relative; }
+  .door h3 { font-family: var(--frak); font-weight: 400; font-size: min(4.6vw, 6vh); margin: 0; color: #fff; text-shadow: 0 0 14px rgba(255,255,255,.4); position: relative; }
+  .door p { font-family: "Press Start 2P", monospace; font-size: min(1vw, 1.25vh); color: #9a9a9a; margin: 0 9%; line-height: 1.8; text-align: center; position: relative; }
+  .hub .plate { min-width: min(30vw, 40vh); }
+
+  /* mines */
+  .mines { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .22); }
+  .mgrid { display: grid; grid-template-columns: repeat(5, var(--mcell, min(15.5vh, 9vw, 120px))); gap: 6px; padding: 10px;
+    background: linear-gradient(#1c1c1c, #0d0d0d); border: 2px solid var(--edge); box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85); }
+  .tile { width: var(--mcell, min(15.5vh, 9vw, 120px)); height: var(--mcell, min(15.5vh, 9vw, 120px)); padding: 0; position: relative;
+    display: flex; align-items: center; justify-content: center; border: 1px solid #3c3c3c;
+    background: linear-gradient(135deg, #303030, #161616); box-shadow: inset 0 0 14px #000, inset 2px 2px 0 rgba(255,255,255,.05); }
+  .tile:not(:disabled):hover { background: linear-gradient(135deg, #444, #1d1d1d); }
+  .tile img { width: 64%; image-rendering: pixelated; pointer-events: none; }
+  .tile.closed img { width: 34%; opacity: .22; }
+  .tile.open { background: #0c0c0c; border-color: #555; }
+  .tile.safe img { filter: drop-shadow(0 0 8px rgba(255,255,255,.55)); }
+  .tile.boom { background: radial-gradient(circle, #b02222, #2a0505 75%); border-color: #e04a4a; animation: shake .45s; }
+  .tile.dim { opacity: .4; }
+  .tile:disabled { cursor: default; opacity: 1; }
+  .tile.dim:disabled { opacity: .4; }
+  /* clicked, waiting for the server: the slab reacts at once */
+  .tile.pending { background: linear-gradient(135deg, #5a5a5a, #262626); transform: scale(.93); animation: tilewait .35s ease-in-out infinite alternate; }
+  @keyframes tilewait { from { filter: brightness(1); } to { filter: brightness(1.6); } }
+  @keyframes shake { 0%,100% { transform: translate(0); } 20% { transform: translate(-6px, 2px); } 40% { transform: translate(5px, -3px); } 60% { transform: translate(-4px, 3px); } 80% { transform: translate(3px, -1px); } }
+  .mines .side .go { height: calc(var(--cell) * .45); font-size: calc(var(--cell) * .11) !important; font-family: "Press Start 2P", monospace;
+    background: linear-gradient(#5a5a5a, #1a1a1a); color: #fff; }
+  .mines .side .go.cash { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  .mines .next { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .07); color: #bdbdbd; line-height: 1.8; }
+
+  /* blackjack */
+  .bj { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .22); --card: min(11vh, 6.6vw, 92px); }
+  .table { width: calc(var(--cell) * 5.2); height: calc(var(--cell) * 3.5); display: flex; flex-direction: column; justify-content: space-between;
+    padding: 3% 4% 6%; border: 2px solid var(--edge); border-radius: 0 0 50% 50% / 0 0 22% 22%;
+    background: radial-gradient(ellipse at 50% 35%, #2b2b2b, #0c0c0c 78%);
+    box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85), inset 0 0 50px #000; }
+  .table .rule { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .065); color: #6f6f6f; line-height: 1.8; }
+  .seat { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .hand-label { font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .08); color: #cfcfcf; text-shadow: 0 0 6px #000; }
+  .hand { display: flex; justify-content: center; min-height: calc(var(--card) * 1.4); }
+  .pcard { width: var(--card); height: calc(var(--card) * 1.4); position: relative; flex: none;
+    background: #e6e6e6; color: #111; border: 3px solid #111; box-shadow: 0 0 0 2px #777, 5px 5px 0 #000;
+    font-family: "Press Start 2P", monospace; }
+  .pcard.new { animation: deal .22s cubic-bezier(.2,.8,.3,1); will-change: transform; }
+  .table { contain: layout paint; }
+  .pcard + .pcard { margin-left: calc(var(--card) * -.32); }
+  .pcard .r { position: absolute; top: 7%; left: 9%; font-size: calc(var(--card) * .2); }
+  .pcard .rb { position: absolute; bottom: 7%; right: 9%; font-size: calc(var(--card) * .2); transform: rotate(180deg); }
+  .pcard .s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: Georgia, serif; font-size: calc(var(--card) * .55); }
+  .pcard.red { color: #8e1b1b; }
+  .pcard.back { background: repeating-linear-gradient(45deg, #1b1b1b 0 6px, #2c2c2c 6px 12px); border-color: #000; box-shadow: 0 0 0 2px #5a5a5a, 5px 5px 0 #000; }
+  .pcard.back::after { content: "✝"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8a8a8a; font-family: Georgia, serif; font-size: calc(var(--card) * .45); }
+  @keyframes deal { from { transform: translate(30px, -50px) rotate(-8deg); opacity: 0; } to { transform: translate(0, 0) rotate(0); opacity: 1; } }
+  .bj .side .go { height: calc(var(--cell) * .38); font-size: calc(var(--cell) * .095) !important; font-family: "Press Start 2P", monospace; color: #fff;
+    background: linear-gradient(#5a5a5a, #1a1a1a); }
+  .bj .side .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .hands { display: flex; justify-content: center; gap: calc(var(--card) * .35); }
+  .hwrap { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 8px; border: 2px solid transparent; }
+  .hwrap.active { border-color: #bdbdbd; box-shadow: 0 0 14px rgba(255,255,255,.25), inset 0 0 14px rgba(255,255,255,.08); }
+  .table.many { --card: min(8.2vh, 4.6vw, 70px); }
+  .bj .side .acts button { height: calc(var(--cell) * .36); font-size: calc(var(--cell) * .07) !important; }
+  .bj .outcome { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .085); color: #fff; min-height: calc(var(--cell) * .3); line-height: 1.8; text-shadow: 0 0 6px #000; }
+  .bj .outcome.win { color: #fff; text-shadow: 0 0 10px #fff; }
+  .bj .outcome.lose { color: #e05a5a; }
+
+  /* crash */
+  .crash { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .22); }
+  .cmain { display: flex; flex-direction: column; gap: 10px; width: calc(var(--cell) * 5.85 + 10px); }
+  .cplay { display: flex; gap: 10px; }
+  /* site-wide wins ticker across the top, visible in every game */
+  body { padding-top: 48px; }
+  .ticker { position: fixed; top: 0; left: 0; right: 0; z-index: 21; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 74px 0 10px;
+    overflow: hidden; background: linear-gradient(#202020, #0c0c0c); border-bottom: 1px solid var(--edge); box-shadow: 0 2px 12px rgba(0,0,0,.7); }
+  .ticker .wl, .ticker span { font-family: "Press Start 2P", monospace; font-size: 9px; white-space: nowrap; }
+  .ticker .wl { color: #9a9a9a; flex: none; }
+  .wtrack span i { font-style: normal; color: #8a8a8a; }
+  /* ticker, ♪ and the volume panel sit above the lo-fi overlays (z 20), whose vignette would darken the corner */
+  /* sound button: the pixel church bell in a small stone lancet, like the hub doors */
+  .snd { position: fixed; right: 8px; top: 2px; z-index: 22; width: 48px; height: 40px; padding: 4px 0 0; border: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(#2e2e2e, #0b0b0b);
+    clip-path: polygon(50% 0, 80% 14%, 96% 38%, 100% 55%, 100% 100%, 0 100%, 0 55%, 4% 38%, 20% 14%); }
+  .snd img { width: 26px; height: 26px; image-rendering: pixelated; filter: drop-shadow(0 0 4px rgba(255,255,255,.35)); pointer-events: none; }
+  .snd:hover { background: linear-gradient(#4a4a4a, #141414); }
+  .snd.open { background: linear-gradient(#7a1818, #2a0505); }
+  .snd.off img { opacity: .35; filter: none; }
+  .snd.off::after { content: ""; position: absolute; left: 10px; right: 10px; top: 50%; height: 3px; background: #a12a2a; transform: rotate(-35deg); }
+  .volpanel { position: fixed; top: 52px; right: 8px; z-index: 22; display: none; flex-direction: column; gap: 12px; width: 220px; padding: 14px;
+    background: linear-gradient(#202020, #0c0c0c); border: 1px solid var(--edge); box-shadow: 0 0 0 4px #0a0a0a, 0 8px 30px rgba(0,0,0,.8); }
+  .volpanel.on { display: flex; }
+  .volpanel label { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-family: "Press Start 2P", monospace; font-size: 9px; color: #bdbdbd; }
+  .volpanel span { color: #fff; }
+  .volpanel input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #8e1b1b; }
+  .wtrack { display: flex; gap: 6px; overflow: hidden; flex: 1; min-width: 0; }
+  .wtrack span { flex: none; padding: 5px 7px; color: #cfcfcf; background: #0c0c0c; border: 1px solid #3c3c3c; }
+  .wtrack span b { color: #fff; font-weight: 400; }
+  .wtrack span.you { border-color: #c94a4a; }
+  .wtrack span.new { animation: slidein .35s ease-out; }
+  @keyframes slidein { from { transform: translateX(-30px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .tagbot { color: #6f6f6f; margin-right: 4px; }
+  .players { width: calc(var(--cell) * 1.75); display: flex; flex-direction: column; background: linear-gradient(#1c1c1c, #0d0d0d);
+    border: 2px solid var(--edge); box-shadow: 0 0 0 6px #0a0a0a; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .055); }
+  .phead { display: flex; justify-content: space-between; gap: 6px; padding: 8px; color: #9a9a9a; border-bottom: 1px solid #333; line-height: 1.6; }
+  .phead b { color: #fff; font-weight: 400; }
+  .plist { flex: 1; overflow: hidden; }
+  .prow { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; padding: 5px 8px; border-bottom: 1px solid #1f1f1f; color: #bdbdbd; line-height: 1.5; }
+  .prow .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .pb { text-align: right; color: #8a8a8a; }
+  .prow .ps { grid-column: 1 / -1; color: #6f6f6f; min-height: 1.5em; }
+  .prow.you { background: rgba(160,40,40,.14); }
+  .prow.won .ps { color: #fff; }
+  .prow.lost .ps { color: #a54040; }
+  .pnote { padding: 6px 8px; color: #5e5e5e; font-size: .85em; line-height: 1.6; border-top: 1px solid #333; }
+  .sky { position: relative; width: calc(var(--cell) * 4.1); height: calc(var(--cell) * 2.6); border: 2px solid var(--edge);
+    box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85); contain: layout paint; }
+  .sky canvas.px { width: 100%; height: 100%; }
+  .cmult { position: absolute; left: 0; right: 0; top: 9%; text-align: center; font-family: "Press Start 2P", monospace;
+    font-size: calc(var(--cell) * .34); color: #fff; text-shadow: 0 0 6px #000, 0 4px 0 #000; pointer-events: none; }
+  .cmult.boom { color: #e05a5a; }
+  .chist { position: absolute; bottom: 8px; left: 8px; display: flex; gap: 5px; pointer-events: none; }
+  .chist span { font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .06); padding: 5px 6px; color: #bdbdbd;
+    background: rgba(0,0,0,.65); border: 1px solid #3c3c3c; }
+  .chist span.hi { color: #fff; border-color: #9a9a9a; }
+  .chist span.lo { color: #e05a5a; }
+  .crash .side .go { height: calc(var(--cell) * .45); font-size: calc(var(--cell) * .11) !important; font-family: "Press Start 2P", monospace;
+    background: linear-gradient(#5a5a5a, #1a1a1a); color: #fff; }
+  .crash .side .go.cash { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  .crash .next { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .07); color: #bdbdbd; line-height: 1.8; min-height: 3.6em; }
+
+  /* duel */
+  .duel { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .22); }
+  .hall, .arena { width: calc(var(--cell) * 5.2); height: calc(var(--cell) * 3.3); border: 2px solid var(--edge);
+    background: radial-gradient(ellipse at 50% 30%, #262626, #0b0b0b 80%); box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85), inset 0 0 50px #000; }
+  .hall { display: flex; flex-direction: column; padding: 14px; gap: 12px; }
+  .hall-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-family: var(--frak); font-size: calc(var(--cell) * .2); color: #fff; }
+  .hall-head span { font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .055); color: #8a8a8a; }
+  .rooms { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 12px; }
+  .room { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 12px 8px 10px;
+    background: linear-gradient(#232323, #0e0e0e); border: 1px solid #3c3c3c; box-shadow: inset 0 0 18px #000;
+    clip-path: polygon(50% 0, 82% 8%, 100% 24%, 100% 100%, 0 100%, 0 24%, 18% 8%); font-family: "Press Start 2P", monospace; }
+  .room.busy { border-color: #6a6a6a; }
+  .room .stake { margin-top: 10%; font-size: calc(var(--cell) * .12); color: #fff; text-shadow: 0 0 8px rgba(255,255,255,.35); }
+  .room .who { font-size: calc(var(--cell) * .05); color: #9a9a9a; text-align: center; line-height: 1.7; min-height: 3.4em; }
+  .room .who img { width: calc(var(--cell) * .16); image-rendering: pixelated; vertical-align: middle; }
+  .room button { width: 86%; height: calc(var(--cell) * .26); font-size: calc(var(--cell) * .06) !important; }
+  .room.busy button { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  .room .candle { position: absolute; top: 18%; width: 3px; height: 12px; background: #d8d8d8; }
+  .room .candle::before { content: ""; position: absolute; left: -2px; top: -8px; width: 7px; height: 8px; border-radius: 50% 50% 40% 40%;
+    background: radial-gradient(circle at 50% 70%, #fff, #e0b060 50%, transparent 70%); animation: flick 1.4s ease-in-out infinite alternate; }
+  .room .candle.l { left: 16%; } .room .candle.r { right: 16%; animation-delay: .5s; }
+  .room.busy .candle::before { background: radial-gradient(circle at 50% 70%, #fff, #d04040 50%, transparent 70%); }
+  @keyframes flick { from { transform: scale(1, 1); opacity: .9; } to { transform: scale(.8, 1.2) translateY(-1px); opacity: 1; } }
+  .arena { display: none; position: relative; overflow: hidden; contain: layout paint; }
+  .duel.fighting .hall { display: none; } .duel.fighting .arena { display: block; }
+  .arena canvas.px { width: 100%; height: 100%; }
+  .dname { position: absolute; top: 0; transform: translate(-50%, -100%); white-space: nowrap; pointer-events: none;
+    font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .055); color: #fff; text-shadow: 0 0 4px #000, 0 2px 0 #000; transition: opacity .3s; }
+  .dname.you { color: #ffb0b0; }
+  .pot { position: absolute; left: 0; right: 0; top: 4%; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .065); color: #bdbdbd; text-align: center; line-height: 1.8; text-shadow: 0 0 6px #000; }
+  .dres { position: absolute; left: 0; right: 0; top: 16%; text-align: center; font-family: var(--frak); font-size: calc(var(--cell) * .3); color: #fff; text-shadow: 0 0 16px rgba(255,255,255,.4), 0 3px 0 #000; }
+  .dres.lose { color: #e05a5a; }
+  .dacts { position: absolute; left: 0; right: 0; bottom: 6%; display: flex; justify-content: center; gap: 12px; }
+  .dacts button { height: calc(var(--cell) * .3); padding: 0 16px; font-size: calc(var(--cell) * .065) !important; }
+  .dhist { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-height: calc(var(--cell) * .16); }
+  .dhist span { font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .05); padding: 4px 5px; background: #0c0c0c; border: 1px solid #333; color: #e05a5a; }
+  .dhist span.w { border-color: #bdbdbd; color: #fff; }
+  .duel .next { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .065); color: #bdbdbd; line-height: 1.8; min-height: 3.6em; }
+
+  /* upgrader */
+  .upg { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .3); }
+  .dialwrap { position: relative; width: calc(var(--cell) * 3.3); height: calc(var(--cell) * 3.3); }
+  .dialwrap canvas.px { width: 100%; height: 100%; filter: drop-shadow(0 0 30px rgba(0,0,0,.9)); }
+  .ucenter { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    pointer-events: none; font-family: "Press Start 2P", monospace; }
+  .ucenter b { font-weight: 400; font-size: calc(var(--cell) * .17); color: #fff; text-shadow: 0 0 8px #000, 0 2px 0 #000; }
+  .ucenter span { font-size: calc(var(--cell) * .06); color: #bdbdbd; text-shadow: 0 0 6px #000; }
+  /* result banner: a game-style stamp over the dial, gone after a couple of seconds */
+  .ures { position: absolute; left: -12%; right: -12%; top: 50%; transform: translateY(-50%); display: none; flex-direction: column; align-items: center; gap: 10px;
+    padding: 16px 0 14px; pointer-events: none; z-index: 2;
+    background: linear-gradient(90deg, transparent, rgba(0,0,0,.92) 18%, rgba(0,0,0,.92) 82%, transparent);
+    border-top: 2px solid var(--bc); border-bottom: 2px solid var(--bc); }
+  .ures.on { display: flex; animation: banner-in .35s cubic-bezier(.2,.9,.3,1.3); }
+  .ures.fade { animation: banner-out .5s forwards; }
+  .ures b { font-family: "Press Start 2P", monospace; font-weight: 400; font-size: calc(var(--cell) * .17); letter-spacing: .12em; }
+  .ures small { font-family: var(--frak); font-size: calc(var(--cell) * .17); line-height: 1; }
+  .ures.win { --bc: #bdbdbd; }
+  .ures.win b { color: #f4f4f4; text-shadow: 0 0 2px #fff, 0 0 18px rgba(255,255,255,.7), 0 0 40px rgba(255,255,255,.35), 4px 4px 0 #000; animation: holy 1.6s ease-in-out infinite alternate; }
+  .ures.win small { color: #e6e6e6; text-shadow: 0 0 10px rgba(255,255,255,.5), 0 3px 0 #000; }
+  .ures.lose { --bc: #6a1010; }
+  .ures.lose b { color: #c01c1c; text-shadow: 0 0 12px #8e1b1b, 0 0 30px rgba(142,27,27,.8), 4px 4px 0 #000; animation: embers .9s steps(1) infinite, quake .4s; }
+  .ures.lose small { color: #7a7a7a; text-shadow: 0 3px 0 #000; }
+  @keyframes banner-in { from { transform: translateY(-50%) scale(1.8); opacity: 0; } to { transform: translateY(-50%) scale(1); opacity: 1; } }
+  @keyframes banner-out { to { opacity: 0; transform: translateY(-50%) scale(.96); } }
+  @keyframes holy { from { filter: brightness(1); } to { filter: brightness(1.35); } }
+  @keyframes embers { 0% { opacity: 1; } 12% { opacity: .55; } 18% { opacity: 1; } 55% { opacity: .8; } 60% { opacity: .35; } 66% { opacity: 1; } }
+  @keyframes quake { 0%,100% { transform: translate(0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
+  .dialwrap.burned canvas.px { filter: drop-shadow(0 0 30px rgba(0,0,0,.9)) grayscale(1) brightness(.55); transition: filter .4s; }
+  .dialwrap.blessed canvas.px { filter: drop-shadow(0 0 40px rgba(255,255,255,.35)); transition: filter .4s; }
+  .betin { width: 100%; min-width: 0; text-align: center; background: #070707; border: 1px solid #3c3c3c; padding: 4px 2px; margin-top: 2px;
+    font-family: "Press Start 2P", monospace !important; color: #fff; outline: none; }
+  .betin:focus { border-color: #c94a4a; box-shadow: 0 0 8px rgba(201,74,74,.5); }
+  .betin:disabled { opacity: .5; }
+  .upg .side .go { height: calc(var(--cell) * .45); font-size: calc(var(--cell) * .1) !important; font-family: "Press Start 2P", monospace;
+    background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; color: #fff; }
+  .upg .next { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .065); color: #bdbdbd; line-height: 1.8; min-height: 3.6em; }
+
+  /* coffins */
+  .cof { position: relative; z-index: 1; align-items: center; gap: calc(var(--cell) * .22); }
+  .crypt { width: calc(var(--cell) * 5.2); height: calc(var(--cell) * 3.3); display: flex; flex-direction: column; gap: 10px; padding: 12px;
+    border: 2px solid var(--edge); background: radial-gradient(ellipse at 50% 20%, #262626, #0b0b0b 80%);
+    box-shadow: 0 0 0 6px #0a0a0a, 0 0 60px rgba(0,0,0,.85), inset 0 0 50px #000; }
+  .coffins { display: flex; justify-content: space-between; gap: 8px; height: 42%; }
+  .coffin { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 0; border: 0;
+    background: none; font-family: "Press Start 2P", monospace; }
+  .coffin .box { position: relative; width: 62%; flex: 1; transition: transform .2s, filter .2s;
+    clip-path: polygon(32% 0, 68% 0, 100% 20%, 82% 100%, 18% 100%, 0 20%);
+    background: linear-gradient(90deg, var(--w1), var(--w2) 50%, var(--w1)); box-shadow: inset 0 0 12px #000; }
+  .coffin .box::before { content: ""; position: absolute; inset: 7% 12% 7% 12%; clip-path: inherit; background: rgba(0,0,0,.25); }
+  .coffin .box::after { content: "✝"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-bottom: 20%;
+    font-family: Georgia, serif; font-size: calc(var(--cell) * .2); color: var(--cross); text-shadow: 0 0 6px #000; }
+  .coffin b { font-weight: 400; font-size: calc(var(--cell) * .05); color: #bdbdbd; text-align: center; line-height: 1.5; }
+  .coffin span { font-size: calc(var(--cell) * .065); color: #fff; }
+  .coffin:hover .box { transform: translateY(-3px); filter: brightness(1.2); }
+  .coffin.on .box { filter: brightness(1.3) drop-shadow(0 0 10px rgba(255,255,255,.35)); transform: translateY(-4px); }
+  .coffin.on b { color: #fff; }
+  .coffin.shake .box { animation: rattle .12s linear infinite; }
+  @keyframes rattle { 0%,100% { transform: translate(0, -4px) rotate(0); } 25% { transform: translate(-2px, -5px) rotate(-2deg); } 75% { transform: translate(2px, -3px) rotate(2deg); } }
+  .reel-win { position: relative; flex: 1; overflow: hidden; border: 1px solid #3c3c3c; background: #070707; box-shadow: inset 0 0 30px #000; }
+  .reel-win::before, .reel-win::after { content: ""; position: absolute; top: 0; bottom: 0; width: 18%; z-index: 2; pointer-events: none; }
+  .reel-win::before { left: 0; background: linear-gradient(90deg, #070707, transparent); }
+  .reel-win::after { right: 0; background: linear-gradient(-90deg, #070707, transparent); }
+  .marker { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; z-index: 3; background: #c01c1c; box-shadow: 0 0 10px #c01c1c; }
+  .lstrip { position: absolute; left: 0; top: 8%; bottom: 8%; display: flex; gap: 6px; will-change: transform; }
+  .loot { flex: none; width: var(--lw); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    background: linear-gradient(#1c1c1c, #0c0c0c); border: 2px solid var(--rc); border-bottom-width: 5px; font-family: "Press Start 2P", monospace; }
+  .loot img { width: 54%; image-rendering: pixelated; }
+  .loot i { font-style: normal; font-size: calc(var(--cell) * .042); color: #9a9a9a; text-align: center; line-height: 1.4; padding: 0 3px; }
+  .loot b { font-weight: 400; font-size: calc(var(--cell) * .05); color: #fff; }
+  .loot.won { box-shadow: 0 0 24px var(--rc); }
+  .cofres { position: absolute; inset: 0; z-index: 4; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+    background: rgba(0,0,0,.72); font-family: var(--frak); color: #fff; font-size: calc(var(--cell) * .22); text-shadow: 0 0 14px rgba(255,255,255,.4); }
+  .cofres.on { display: flex; animation: fadein .3s; }
+  .cofres small { font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .06); color: #bdbdbd; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .odds { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; font-family: "Press Start 2P", monospace; font-size: max(9px, calc(var(--cell) * .058)); }
+  .odds span { padding: 4px 6px; border: 1px solid var(--rc); color: #e6e6e6; background: rgba(0,0,0,.55); }
+  .cof .side .go { height: calc(var(--cell) * .45); font-size: calc(var(--cell) * .095) !important; font-family: "Press Start 2P", monospace;
+    background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; color: #fff; }
+  .cof .next { text-align: center; font-family: "Press Start 2P", monospace; font-size: calc(var(--cell) * .065); color: #bdbdbd; line-height: 1.8; min-height: 3.6em; }
+
+  /* wallet: deposit / withdraw, sign-in gate, toasts */
+  .purse { display: flex; align-items: center; gap: 12px; }
+  .purse button { height: 34px; padding: 0 14px; font-size: 10px !important; }
+  #depositBtn { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  #who { font-family: "Press Start 2P", monospace; font-size: 9px; color: #9a9a9a; text-shadow: 0 0 4px #000; }
+  .cashcard { display: flex; flex-direction: column; gap: 12px; min-width: min(360px, 90vw); }
+  .cashcard .betin { font-size: 16px; padding: 10px; }
+  .cashbtns { display: flex; gap: 10px; }
+  .cashbtns button { flex: 1; height: 38px; }
+  #cashOk { background: linear-gradient(#a12a2a, #4a0e0e); border-color: #c94a4a; }
+  .gate { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.82); }
+  .gate.on { display: flex; }
+  .gate a { color: #ff8a8a; font-family: "Press Start 2P", monospace; font-size: 11px; }
+  .toast { position: fixed; left: 50%; bottom: 46px; transform: translate(-50%, 20px); z-index: 30; opacity: 0; pointer-events: none;
+    padding: 10px 16px; background: linear-gradient(#202020, #0c0c0c); border: 1px solid var(--edge); color: #fff;
+    font-family: "Press Start 2P", monospace; font-size: 10px; transition: opacity .25s, transform .25s; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .toast.bad { border-color: #c94a4a; color: #ff9a9a; }
+
+  @media (max-aspect-ratio: 5/4) {
+    :root { --cell: min(13.5vh, 18vw, 150px); }
+    .stage { flex-direction: column; gap: calc(var(--cell) * .12); }
+    .side { width: calc(var(--cell) * 5.2); display: grid; grid-template-columns: 1fr 1fr 1fr; }
+    .side .title { grid-column: 1 / -1; order: -1; }
+    .side .spin { grid-column: 1 / -1; }
+    .side .row, .side .msg { grid-column: 1 / -1; }
+    .crash, .duel, .upg, .cof { flex-direction: column; gap: calc(var(--cell) * .12); }
+    .cplay { flex-direction: column; }
+    .sky { width: calc(var(--cell) * 5.2); height: calc(var(--cell) * 2.9); }
+    .players { width: auto; height: calc(var(--cell) * 1.3); }
+    .cmain { width: calc(var(--cell) * 5.2); }
+  }
+</style>
+</head>
+<body>
+<div class="lofi grain" aria-hidden="true"></div>
+<div class="lofi scan" aria-hidden="true"></div>
+<div class="lofi vignette" aria-hidden="true"></div>
+<div class="backdrop" aria-hidden="true">
+  <div class="fog f1"></div>
+  <svg viewBox="0 0 1600 700" preserveAspectRatio="xMidYMax slice">
+    <!-- farthest ridge with a scatter of small castles, lost in fog -->
+    <g fill="#5a5a5a" opacity=".35" style="filter: blur(3px)">
+      <path d="M0 530Q190 470 380 505T760 485T1150 515T1600 465V700H0z"/>
+      <path d="M90 520V430h14v-12h10v12h14v-30l12-30 12 30v60zM150 500V455l9-22 9 22v45z"/>
+      <path d="M420 505V420l10-26 10 26v-22h16v-14h10v14h16v85z"/>
+      <path d="M690 490V445l8-30 8 30v-15h22v60z"/>
+      <path d="M1180 515V410l12-34 12 34v-28h20v-12h10v12h20v133zM1270 515V460l9-24 9 24v55z"/>
+      <path d="M1440 480V400l14-40 14 40v-20h12v-14h10v14h12v100zM1530 470V430l8-20 8 20v40z"/>
+    </g>
+    <defs>
+      <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#d8d8d8" stop-opacity="0"/>
+        <stop offset=".45" stop-color="#d8d8d8" stop-opacity=".75"/>
+        <stop offset="1" stop-color="#d8d8d8" stop-opacity=".2"/>
+      </linearGradient>
+    </defs>
+    <!-- fog bank swallowing the far castles -->
+    <rect x="0" y="380" width="1600" height="200" fill="url(#mist)" opacity=".8"/>
+    <!-- middle distance: two larger castles, deliberately unequal -->
+    <g fill="#333" opacity=".6" style="filter: blur(1.5px)">
+      <path d="M250 700V360h18v-16h14v16h18v-16h14v16h18V300l16-56 16 56v60h40V330h14v-14h12v14h14v370z"/>
+      <path d="M1100 700V400l24-90 24 90v-40h30v-20h14v20h30v-80l12-40 12 40V700z"/>
+      <path d="M1290 700V350l10-24 10 24v350z"/>
+    </g>
+    <!-- second, thinner fog bank in front of the middle castles -->
+    <rect x="0" y="440" width="1600" height="200" fill="url(#mist)" opacity=".55"/>
+    <!-- main silhouette: the cathedral in the middle, a square keep with a round tower on the left,
+         a broken tower and a lone needle spire on the right -->
+    <g fill="#060606">
+      <path d="M0 700V240h20v-22h22v22h22v-22h22v22h22v-22h22v22h10V700z"/>
+      <path d="M150 700V300h40v400zM146 300l24-80 24 80z"/>
+      <path d="M190 700V430h24v-16h20v16h24v-16h20v16h24v-16h20v16h24v-16h20v16h24v-16h20v16h24v-16h20v16h80v270z"/>
+      <path d="M560 700V300l18-90 18 90V220l22-120 22 120v80l18-90 18 90v400z"/>
+      <path d="M1040 700V300l-18-90-18 90V220l-22-120-22 120v80l-18-90-18 90v400z"/>
+      <path d="M676 700V250l124-150 124 150v450z"/>
+      <path d="M676 250l-24-12 24-40zM924 250l24-12-24-40z"/>
+      <path d="M1040 700V470h400v230z"/>
+      <path d="M1300 700V330l20-180 20 180V700z"/>
+      <path d="M1440 700V330l18-14 12 26 16-42 14 34 22-12 12 20 12-8 14 18 40-10V700z"/>
+    </g>
+    <!-- lit windows -->
+    <g fill="#9a9a9a" opacity=".55">
+      <path d="M742 470V330q58-90 116 0v140z"/>
+      <path d="M612 520V430q16-30 32 0v90zM956 520V430q16-30 32 0v90z"/>
+      <path d="M50 420V350q14-26 28 0v70zM100 520V470q10-18 20 0v50z"/>
+      <path d="M1470 480V430q12-22 24 0v50zM1312 330V300q8-14 16 0v30z"/>
+    </g>
+    <g stroke="#060606" stroke-width="6" fill="none">
+      <path d="M800 330v140M771 350v120M829 350v120M742 400h116"/>
+      <circle cx="800" cy="390" r="0"/>
+    </g>
+    <!-- portal -->
+    <path d="M740 700V610q60-90 120 0v90z" fill="#000"/>
+  </svg>
+  <div class="dragons" id="dragons"></div>
+  <div class="fog f4"></div>
+  <div class="fog f2"></div>
+  <div class="fog f3"></div>
+</div>
+<div class="crows" id="crows"></div>
+
+<div class="test">ТЕСТОВЫЙ БАЛАНС</div>
+<div class="ticker"><span class="wl">Выигрыши</span><div class="wtrack" id="ticker"></div></div>
+<button class="snd" id="sound" title="Громкость музыки и звуков" aria-label="Громкость"><img id="soundImg" alt=""></button>
+<div class="volpanel" id="volpanel">
+  <label>Музыка <span id="volMusicVal"></span><input type="range" id="volMusic" min="0" max="100" step="1"></label>
+  <label>Звуки <span id="volSfxVal"></span><input type="range" id="volSfx" min="0" max="100" step="1"></label>
+</div>
+<div class="fsbar" id="fsbar">Полночь · осталось <span id="fsleft">0</span> · выигрыш <span id="fswin">0</span></div>
+
+<div class="stage view" id="slots">
+  <div class="nave">
+    <!-- gothic cathedral front over the reels: a pointed gable with a rose window, spires at the corners and a
+         blind arcade along the cornice; rasterised to low-res pixels at start-up. The box is stretched wide,
+         so round things are drawn narrow (ellipses) to come out round. -->
+    <svg class="arch" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true">
+      <!-- side aisles with battlements -->
+      <path d="M0 100V72H8V66H16V72H28V66H36V72H48V66H56V72H68V66H76V72H88V66H96V72H108V66H116V72H140V100Z" fill="#141414" stroke="#6a6a6a" stroke-width="1.5"/>
+      <path d="M260 100V72H284V66H292V72H304V66H312V72H324V66H332V72H344V66H352V72H364V66H372V72H384V66H392V72H400V100Z" fill="#141414" stroke="#6a6a6a" stroke-width="1.5"/>
+      <!-- the pointed gable -->
+      <path d="M140 100V86Q170 50 200 2Q230 50 260 86V100Z" fill="#0e0e0e"/>
+      <path d="M140 86Q170 50 200 2Q230 50 260 86" fill="none" stroke="#a8a8a8" stroke-width="3"/>
+      <path d="M152 94Q178 60 200 18Q222 60 248 94" fill="none" stroke="#3c3c3c" stroke-width="2.5"/>
+      <!-- crockets along the gable -->
+      <path d="M160 64l-4-6M172 46l-4-6M184 28l-4-6M216 28l4-6M228 46l4-6M240 64l4-6" stroke="#8a8a8a" stroke-width="2.5"/>
+      <!-- rose window: stone ring, eight petals of tracery, blood-red glass in the heart -->
+      <ellipse cx="200" cy="58" rx="15" ry="26" fill="#1c1c1c" stroke="#9a9a9a" stroke-width="2.5"/>
+      <ellipse cx="200" cy="58" rx="10.5" ry="18" fill="#3a3a3a"/>
+      <path d="M200 32V84M185 58H215M189.5 40L210.5 76M210.5 40L189.5 76" stroke="#8a8a8a" stroke-width="2"/>
+      <ellipse cx="200" cy="58" rx="4.5" ry="8" fill="#a01818" stroke="#d8d8d8" stroke-width="1.2"/>
+      <!-- spires: tall ones at the corners, small pinnacles where the gable meets the aisles -->
+      <path d="M2 74V36L8 12L14 36V74Z M386 74V36L392 12L398 36V74Z" fill="#161616" stroke="#8a8a8a" stroke-width="1.5"/>
+      <path d="M8 12V2M5 5H11M392 12V2M389 5H395" stroke="#bdbdbd" stroke-width="1.5"/>
+      <path d="M134 88V54L140 32L146 54V88Z M254 88V54L260 32L266 54V88Z" fill="#161616" stroke="#8a8a8a" stroke-width="1.5"/>
+      <path d="M200 2V-6" stroke="#bdbdbd" stroke-width="2"/>
+      <!-- blind arcade of lancet arches along the cornice -->
+      <path d="M24 92V82Q30 74 36 82V92M52 92V82Q58 74 64 82V92M80 92V82Q86 74 92 82V92M308 92V82Q314 74 320 82V92M336 92V82Q342 74 348 82V92M364 92V82Q370 74 376 82V92" fill="#070707" stroke="#5a5a5a" stroke-width="1.5"/>
+      <rect x="0" y="93" width="400" height="7" fill="#5a5a5a"/>
+      <rect x="0" y="93" width="400" height="1.5" fill="#9a9a9a"/>
+    </svg>
+    <div class="reels" id="reels"></div>
+  </div>
+
+  <div class="side">
+    <div class="title">Nullified Casino<small>Midnight Cathedral</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="bal">0</div></div>
+    <div class="plate"><div class="lbl">Выигрыш</div><div class="val" id="win">0</div></div>
+    <div class="plate betctl">
+      <button id="betDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Ставка</div><input class="val betin" id="bet" type="text" inputmode="numeric" autocomplete="off" aria-label="Ставка"></div>
+      <button id="betUp" aria-label="Больше">+</button>
+    </div>
+    <button class="spin" id="spin">Крутить</button>
+    <div class="row">
+      <button id="auto">Авто</button>
+      <button id="speed" title="Скорость вращения">▶</button>
+      <button id="info">Правила</button>
+    </div>
+    <button class="back" id="backSlots">← В собор</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+
+<div class="hub view on" id="hub">
+  <div class="logo"><span id="hubTitle"></span><small>Midnight Cathedral</small></div>
+  <div class="carousel">
+  <button class="arrow" id="doorsPrev" aria-label="Предыдущие игры">&lt;</button>
+  <div class="doors" id="doors">
+    <button class="door" id="doorSlots">
+      <img id="doorSlotsImg" alt="">
+      <h3>Slots</h3>
+      <p>Классические слоты</p>
+    </button>
+    <button class="door" id="doorMines">
+      <img id="doorMinesImg" alt="">
+      <h3>Mines</h3>
+      <p>Классические мины</p>
+    </button>
+    <button class="door" id="doorBj">
+      <img id="doorBjImg" alt="">
+      <h3>Blackjack</h3>
+      <p>Классический блэкджек</p>
+    </button>
+    <button class="door" id="doorCrash">
+      <img id="doorCrashImg" alt="">
+      <h3>Crash</h3>
+      <p>Классический краш</p>
+    </button>
+    <button class="door" id="doorDuel">
+      <img id="doorDuelImg" alt="">
+      <h3>Duel</h3>
+      <p>Один на один, 50 на 50</p>
+    </button>
+    <button class="door" id="doorUpg">
+      <img id="doorUpgImg" alt="">
+      <h3>Upgrader</h3>
+      <p>Улучши ставку в x раз</p>
+    </button>
+    <button class="door" id="doorCof">
+      <img id="doorCofImg" alt="">
+      <h3>Coffins</h3>
+      <p>Классические кейсы</p>
+    </button>
+  </div>
+  <button class="arrow" id="doorsNext" aria-label="Следующие игры">&gt;</button>
+  </div>
+  <div class="plate"><div class="lbl">Баланс</div><div class="val" id="hubBal">0</div></div>
+  <div class="purse">
+    <button class="back" id="depositBtn">Пополнить</button>
+    <span id="who"></span>
+    <button class="back" id="withdrawBtn">Вывести</button>
+  </div>
+</div>
+
+<div class="mines view" id="mines">
+  <div class="mgrid" id="mgrid"></div>
+  <div class="side">
+    <div class="title"><span id="minesTitle"></span><small>Mines</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="mBal">0</div></div>
+    <div class="plate betctl">
+      <button id="mBetDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Ставка</div><input class="val betin" id="mBet" type="text" inputmode="numeric" autocomplete="off" aria-label="Ставка"></div>
+      <button id="mBetUp" aria-label="Больше">+</button>
+    </div>
+    <div class="plate betctl">
+      <button id="mCountDown" aria-label="Меньше мин">−</button>
+      <div><div class="lbl">Мин</div><div class="val" id="mCount">3</div></div>
+      <button id="mCountUp" aria-label="Больше мин">+</button>
+    </div>
+    <button class="go" id="mGo">Играть</button>
+    <div class="next" id="mNext"></div>
+    <button class="back" id="backMines">← В собор</button>
+  </div>
+</div>
+
+<div class="bj view" id="bj">
+  <div class="table">
+    <div class="seat">
+      <div class="hand-label" id="bjDealerLabel">Дилер</div>
+      <div class="hand" id="bjDealer"></div>
+    </div>
+    <div class="rule">Blackjack платит 6:5 · Дилер стоит на мягких 17</div>
+    <div class="seat">
+      <div class="hands" id="bjPlayer"></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="title"><span id="bjTitle"></span><small>Blackjack</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="bjBal">0</div></div>
+    <div class="plate betctl">
+      <button id="bjBetDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Ставка</div><input class="val betin" id="bjBet" type="text" inputmode="numeric" autocomplete="off" aria-label="Ставка"></div>
+      <button id="bjBetUp" aria-label="Больше">+</button>
+    </div>
+    <button class="go" id="bjDeal">Раздать</button>
+    <div class="acts">
+      <button id="bjHit">Ещё</button>
+      <button id="bjStand">Хватит</button>
+      <button id="bjDouble">x2</button>
+      <button id="bjSplit">Сплит</button>
+    </div>
+    <div class="outcome" id="bjOut"></div>
+    <button class="back" id="backBj">← В собор</button>
+  </div>
+</div>
+
+<div class="crash view" id="crash">
+  <div class="cmain">
+    <div class="cplay">
+      <div class="players">
+        <div class="phead"><span>Игроки <b id="cCount">0</b></span><span>Ставки <b id="cTotal">0</b></span></div>
+        <div class="plist" id="cList"></div>
+        <div class="pnote">Боты — демо-игроки, не люди</div>
+      </div>
+      <div class="sky">
+        <canvas class="px" id="crashCanvas" width="192" height="108"></canvas>
+        <div class="cmult" id="crashMult">x1.00</div>
+        <div class="chist" id="crashHist"></div>
+      </div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="title"><span id="crashTitle"></span><small>Crash</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="cBal">0</div></div>
+    <div class="plate betctl">
+      <button id="cBetDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Ставка</div><input class="val betin" id="cBet" type="text" inputmode="numeric" autocomplete="off" aria-label="Ставка"></div>
+      <button id="cBetUp" aria-label="Больше">+</button>
+    </div>
+    <div class="plate betctl">
+      <button id="cAutoDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Автозабор</div><div class="val" id="cAuto">Выкл</div></div>
+      <button id="cAutoUp" aria-label="Больше">+</button>
+    </div>
+    <button class="go" id="cGo">Играть</button>
+    <div class="next" id="cNext"></div>
+    <button class="back" id="backCrash">← В собор</button>
+  </div>
+</div>
+
+<div class="duel view" id="duel">
+  <div class="hall">
+    <div class="hall-head">Залы дуэлей <span>50 на 50 · комиссия 10%</span></div>
+    <div class="rooms" id="duelRooms"></div>
+  </div>
+  <div class="arena">
+    <canvas class="px" id="dCanvas" width="192" height="108"></canvas>
+    <div class="dname you" id="dYouName">Ты</div>
+    <div class="dname" id="dOppName"></div>
+    <div class="pot" id="dPot"></div>
+    <div class="dres" id="dRes"></div>
+    <div class="dacts"><button class="go" id="dAgain">Ещё дуэль</button><button class="go" id="dLeave">К залам</button></div>
+  </div>
+  <div class="side">
+    <div class="title"><span id="duelTitle"></span><small>Duel</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="dBal">0</div></div>
+    <div class="next" id="dNext">Выбери зал. Двое идут через замок, вампир забирает одного. Выживший уносит банк</div>
+    <div class="dhist" id="dHist"></div>
+    <button class="back" id="backDuel">← В собор</button>
+  </div>
+</div>
+
+<div class="upg view" id="upg">
+  <div class="dialwrap">
+    <canvas class="px" id="uCanvas" width="160" height="160"></canvas>
+    <div class="ucenter"><b id="uChance">48.5%</b><span id="uTarget"></span></div>
+    <div class="ures" id="uRes"></div>
+  </div>
+  <div class="side">
+    <div class="title"><span id="upgTitle"></span><small>Upgrader</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="uBal">0</div></div>
+    <div class="plate betctl">
+      <button id="uBetDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Ставка · до 95 000</div><input class="val betin" id="uBet" type="text" inputmode="numeric" autocomplete="off" aria-label="Ставка"></div>
+      <button id="uBetUp" aria-label="Больше">+</button>
+    </div>
+    <div class="plate betctl">
+      <button id="uMultDown" aria-label="Меньше">−</button>
+      <div><div class="lbl">Множитель</div><div class="val" id="uMult">x2</div></div>
+      <button id="uMultUp" aria-label="Больше">+</button>
+    </div>
+    <button class="go" id="uGo">Улучшить</button>
+    <div class="next" id="uNext">Чем выше множитель, тем меньше красная дуга</div>
+    <div class="dhist" id="uHist"></div>
+    <button class="back" id="backUpg">← В собор</button>
+  </div>
+</div>
+
+<div class="cof view" id="cof">
+  <div class="crypt">
+    <div class="coffins" id="cofList"></div>
+    <div class="reel-win"><div class="lstrip" id="cofStrip"></div><div class="marker"></div><div class="cofres" id="cofRes"></div></div>
+    <div class="odds" id="cofOdds"></div>
+  </div>
+  <div class="side">
+    <div class="title"><span id="cofTitle"></span><small>Coffins</small></div>
+    <div class="plate"><div class="lbl">Баланс</div><div class="val" id="cBal2">0</div></div>
+    <div class="plate"><div class="lbl" id="cofName">Кейс</div><div class="val" id="cofPrice">0</div></div>
+    <button class="go" id="cofGo">Открыть кейс</button>
+    <div class="next" id="cofNext">Выбери кейс и открой его</div>
+    <div class="dhist" id="cofHist"></div>
+    <button class="back" id="backCof">← В собор</button>
+  </div>
+</div>
+
+<div class="modal" id="cashModal"><div class="card cashcard">
+  <h2 id="cashTitle">Пополнить</h2>
+  <p id="cashText"></p>
+  <input class="betin" id="cashAmount" type="text" inputmode="numeric" autocomplete="off" aria-label="Сумма">
+  <div class="cashbtns"><button id="cashOk">Пополнить</button><button id="cashCancel">Отмена</button></div>
+</div></div>
+
+<div class="gate" id="gate"><div class="card">
+  <h2>Nullified Casino</h2>
+  <p>Играть можно только через huEVO: ставки идут твоими монэтками huEVO.</p>
+  <p><a href="https://huevo.su/apps/223" target="_top">Открыть игру на huEVO</a></p>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<div class="modal" id="ptModal"><div class="card">
+  <h2>Скрижаль выплат</h2>
+  <p>Выплаты указаны в ставках на линию (ставка ÷ 20). Линии считаются слева направо с первого барабана.</p>
+  <div class="pt" id="ptTable"></div>
+  <p><b>Витраж</b> (вайлд) — только на барабанах 2, 3 и 4, заменяет всё, кроме колокола. У каждого витража множитель x2 или x3, множители на одной линии складываются.</p>
+  <p><b>Колокол</b> — только на барабанах 1, 3 и 5. Три колокола платят 5× ставки и бьют полночь: 9–21 фриспин. До конца полуночи витражи остаются на своих местах.</p>
+  <p>Игра на тестовом балансе: монэтки ненастоящие.</p>
+  <button id="ptClose">Закрыть</button>
+</div></div>
+
+<div class="modal" id="fsModal"><div class="card">
+  <h2 id="fsTitle">Бьёт полночь</h2>
+  <div class="big" id="fsBig"></div>
+  <p id="fsText"></p>
+  <button id="fsOk">Войти</button>
+</div></div>
+
+<script>
+"use strict";
+
+/* ---------- game math ---------- */
+const SYMBOLS = {
+  rott:   { face: "💀", pays: [0, 0, 0, 65, 260, 1300] },   // skull
+  pug:    { face: "🦇", pays: [0, 0, 0, 45, 130, 650] },    // bat
+  poodle: { face: "🕯️", pays: [0, 0, 0, 32, 90, 440] },     // candle
+  guide:  { face: "🗝️", pays: [0, 0, 0, 22, 65, 260] },     // key
+  bone:   { face: "🥀", pays: [0, 0, 0, 17, 44, 175] },     // wilted rose
+  A: { face: "A", royal: true, pays: [0, 0, 0, 11, 26, 90] },
+  K: { face: "K", royal: true, pays: [0, 0, 0, 11, 22, 77] },
+  Q: { face: "Q", royal: true, pays: [0, 0, 0, 8, 17, 55] },
+  J: { face: "J", royal: true, pays: [0, 0, 0, 6, 13, 44] },
+  T: { face: "X", royal: true, pays: [0, 0, 0, 4, 11, 33] },
+  W: { face: "Витраж" },
+  S: { face: "🔔" },
+};
+const BASE_WEIGHTS = { rott: 3, pug: 4, poodle: 5, guide: 6, bone: 8, A: 10, K: 10, Q: 12, J: 12, T: 12 };
+const WILD_REELS = [1, 2, 3];
+const SCATTER_REELS = [0, 2, 4];
+const WILD_WEIGHT = 2.2;
+const SCATTER_WEIGHT = 3.4;
+const SCATTER_PAY = 5;                 // × total bet for 3 scatters
+const FS_COUNTS = [9, 12, 15, 18, 21];
+const FS_COUNT_WEIGHTS = [35, 30, 20, 10, 5];
+const LINES = [
+  [1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],
+  [1,0,0,0,1],[1,2,2,2,1],[0,0,1,2,2],[2,2,1,0,0],[1,2,1,0,1],
+  [1,0,1,2,1],[0,1,1,1,0],[2,1,1,1,2],[0,1,0,1,0],[2,1,2,1,2],
+  [1,1,0,1,1],[1,1,2,1,1],[0,0,2,0,0],[2,2,0,2,2],[0,2,2,2,0],
+];
+const BETS = [20, 40, 100, 200, 400, 1000, 2000];     // bot bet sizes
+// Player bets are typed by hand in every game: whole coins, BET_MIN..BET_MAX; − / + step through BET_STEPS.
+const BET_MIN = 10, BET_MAX = 95000;
+const BET_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 95000];
+const clampBet = (v) => Math.min(BET_MAX, Math.max(BET_MIN, Math.round(v) || BET_MIN));
+function bindBet(inputId, downId, upId, obj, render) {
+  const el = document.getElementById(inputId);
+  el.addEventListener("input", () => {
+    const d = el.value.replace(/\D/g, "").slice(0, 6);
+    el.value = Number(d) > BET_MAX ? BET_MAX : d;
+    if (d) obj.bet = Math.min(BET_MAX, Number(d));
+    render();
+  });
+  el.addEventListener("blur", () => { obj.bet = clampBet(obj.bet); render(); });
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter") el.blur(); });
+  document.getElementById(downId).onclick = () => { obj.bet = [...BET_STEPS].reverse().find((s) => s < obj.bet) ?? BET_MIN; render(); };
+  document.getElementById(upId).onclick = () => { obj.bet = BET_STEPS.find((s) => s > obj.bet) ?? BET_MAX; render(); };
+  // ½ and Max under the bet: half the balance or all of it, kept within the bet limits
+  const quick = document.createElement("div");
+  quick.className = "row betquick"; quick.dataset.for = inputId;
+  quick.innerHTML = `<button type="button" data-q="half">½ баланса</button><button type="button" data-q="max">Макс</button>`;
+  document.getElementById(downId).closest(".betctl").after(quick);
+  quick.onclick = (e) => {
+    const b = e.target.closest("button[data-q]");
+    if (!b || b.disabled) return;
+    obj.bet = clampBet(b.dataset.q === "half" ? Math.floor(Wallet.get() / 2) : Wallet.get());
+    render();
+  };
+}
+function showBet(inputId, value, locked) {
+  const el = document.getElementById(inputId);
+  if (document.activeElement !== el) el.value = fmt(value);
+  el.disabled = locked;
+  for (const b of document.querySelectorAll(`.betquick[data-for="${inputId}"] button`)) b.disabled = locked;
+}
+
+function rnd() { return crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296; }
+
+/* ---------- 8-bit sound ---------- */
+// Square-wave blips and noise bursts made with Web Audio; no sound files. The ♪ button in the
+// ticker mutes them, and the choice is remembered in this browser.
+const Sfx = (() => {
+  // Two buses: interface sounds and music, each with its own volume (0..1), remembered in this browser.
+  const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : Math.min(1, Math.max(0, Number(v) || 0)); } catch { return d; } };
+  const vol = { sfx: load("nullified_sfx", 0.8), music: load("nullified_music", 0.5) };
+  let ctx = null;
+  const bus = {};
+  const ac = () => {
+    if (ctx) return ctx;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    for (const k of ["sfx", "music"]) { bus[k] = ctx.createGain(); bus[k].gain.value = vol[k]; bus[k].connect(ctx.destination); }
+    return ctx;
+  };
+  // Everything goes through a low-pass filter, so the chiptune reads muffled and grim, like it's
+  // coming from inside the crypt; melodies are in minor keys and low registers.
+  function tone(freq, dur, { type = "square", vol = 0.06, at = 0, slide = 0, cut = 1400, detune = 0, to = "sfx", when = 0 } = {}) {
+    const c = ac(), t = (when || c.currentTime) + at, o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+    o.type = type; o.detune.value = detune;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(25, freq * slide), t + dur);
+    f.type = "lowpass"; f.frequency.value = cut;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.012, dur / 4));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(bus[to]);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(dur, { vol = 0.06, at = 0, cut = 900, to = "sfx", when = 0 } = {}) {
+    const c = ac(), t = (when || c.currentTime) + at, n = Math.ceil(c.sampleRate * dur);
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n) ** 2;
+    const s = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter();
+    s.buffer = buf; g.gain.value = vol; f.type = "lowpass"; f.frequency.value = cut;
+    s.connect(f).connect(g).connect(bus[to]);
+    s.start(t);
+  }
+  // a church bell: two slightly detuned tones plus a dull overtone, long decay
+  const bell = (freq, at = 0, vol = 0.07, to = "sfx", when = 0) => {
+    tone(freq, 1.6, { type: "triangle", vol, at, cut: 2200, to, when });
+    tone(freq, 1.4, { type: "triangle", vol: vol * 0.6, at, detune: 12, cut: 2200, to, when });
+    tone(freq * 2.4, 0.6, { type: "sine", vol: vol * 0.3, at, cut: 2200, to, when });
+  };
+  const arp = (notes, step, opts) => notes.forEach((f, i) => tone(f, step * 1.6, { ...opts, at: i * step }));
+  const fx = {
+    click: () => tone(196, 0.06, { vol: 0.05, cut: 900 }),
+    back: () => tone(165, 0.12, { vol: 0.05, slide: 0.6, cut: 800 }),
+    tick: () => tone(330, 0.03, { vol: 0.035, cut: 1000 }),
+    card: () => noise(0.06, { vol: 0.06, cut: 1200 }),
+    safe: () => tone(294, 0.12, { type: "triangle", slide: 1.06, vol: 0.07 }),
+    coin: () => { bell(196); bell(294, 0.12, 0.05); },
+    win: () => arp([220, 262, 330, 440], 0.09, { vol: 0.05 }),                       // A minor, rising
+    big: () => { arp([220, 262, 330, 440, 392, 330, 440, 523], 0.1, { vol: 0.05 }); bell(110, 0.8, 0.08); },
+    lose: () => arp([233, 220, 208, 156], 0.13, { type: "sawtooth", vol: 0.045, cut: 700 }),   // sinking, ends on a tritone
+    boom: () => { noise(0.7, { vol: 0.14, cut: 500 }); tone(82, 0.6, { slide: 0.4, vol: 0.09, cut: 400 }); },
+    launch: () => { tone(55, 0.9, { type: "sawtooth", slide: 3, vol: 0.05, cut: 600 }); tone(58, 0.9, { type: "sawtooth", slide: 3, vol: 0.03, cut: 600 }); },
+    step: () => noise(0.05, { vol: 0.05, cut: 300 }),
+    vamp: () => { tone(620, 0.7, { type: "sawtooth", slide: 0.25, vol: 0.06, cut: 1600 }); tone(640, 0.7, { type: "sawtooth", slide: 0.27, vol: 0.04, cut: 1600 }); noise(0.5, { vol: 0.07, at: 0.4, cut: 600 }); },
+    crow: () => { tone(520, 0.14, { type: "sawtooth", slide: 0.45, vol: 0.06, cut: 1800 }); tone(470, 0.16, { type: "sawtooth", slide: 0.4, vol: 0.05, at: 0.17, cut: 1800 }); noise(0.25, { vol: 0.04, at: 0.05 }); },
+  };
+  /* Background music: a slow looping dirge in A harmonic minor (Am – F – Dm – E), 8 eighth-notes per
+     bar. Low square bass, a muffled triangle arpeggio, a thin organ pad and a bell every other bar.
+     Notes are scheduled slightly ahead on the audio clock so timing stays steady. */
+  const STEP = 0.32;
+  const CHORDS = [[110, [0, 3, 7, 12]], [87.31, [0, 4, 7, 12]], [73.42, [0, 3, 7, 12]], [82.41, [0, 4, 7, 12]]];
+  const ARP = [0, 1, 2, 1, 3, 2, 1, 2];
+  const semi = (f, s) => f * 2 ** (s / 12);
+  let musicStep = 0, musicNext = 0, musicTimer = null;
+  function musicNote(i, t) {
+    const bar = Math.floor(i / 8) % CHORDS.length, beat = i % 8;
+    const [root, tones] = CHORDS[bar];
+    const m = { to: "music", when: t };
+    if (beat === 0 || beat === 4) tone(root / 2, STEP * 3.5, { ...m, vol: 0.07, cut: 380 });
+    tone(semi(root * 2, tones[ARP[beat]]), STEP * 1.6, { ...m, type: "triangle", vol: 0.035, cut: 1100 });
+    if (beat === 0) for (const s of [0, tones[1], 7]) tone(semi(root, s), STEP * 8, { ...m, type: "sawtooth", vol: 0.012, cut: 520 });
+    if (beat === 0 && Math.floor(i / 8) % 2 === 0) bell(root * 4, 0, 0.025, "music", t);
+  }
+  function musicSchedule() {
+    const c = ac();
+    if (musicNext < c.currentTime) musicNext = c.currentTime + 0.05;
+    while (musicNext < c.currentTime + 0.5) { musicNote(musicStep++, musicNext); musicNext += STEP; }
+  }
+  return {
+    play(k) { if (vol.sfx > 0) try { fx[k](); } catch {} },
+    // starts after the first user gesture (browsers block audio before that)
+    startMusic() {
+      if (musicTimer) return;
+      try { if (ac().state === "suspended") ctx.resume(); musicSchedule(); musicTimer = setInterval(musicSchedule, 150); } catch {}
+    },
+    get volumes() { return { ...vol }; },
+    setVolume(k, v) {
+      vol[k] = v;
+      if (bus[k]) bus[k].gain.setTargetAtTime(v, ctx.currentTime, 0.05);
+      try { localStorage.setItem("nullified_" + k, String(v)); } catch {}
+    },
+  };
+})();
+function weighted(entries, rand = rnd) {
+  let total = 0;
+  for (const [, w] of entries) total += w;
+  let r = rand() * total;
+  for (const [v, w] of entries) { if ((r -= w) < 0) return v; }
+  return entries[entries.length - 1][0];
+}
+function reelTable(reel, freeSpins) {
+  const t = Object.entries(BASE_WEIGHTS);
+  if (WILD_REELS.includes(reel)) t.push(["W", WILD_WEIGHT]);
+  if (!freeSpins && SCATTER_REELS.includes(reel)) t.push(["S", SCATTER_WEIGHT]);
+  return t;
+}
+function makeCell(s) { return s === "W" ? { s, m: rnd() < 0.6 ? 2 : 3 } : { s }; }
+
+// grid[col][row]; sticky holds wilds carried over in free spins
+function spinGrid(freeSpins, sticky) {
+  const grid = [];
+  for (let c = 0; c < 5; c++) {
+    const col = [];
+    const table = reelTable(c, freeSpins);
+    for (let r = 0; r < 3; r++) {
+      const key = c + ":" + r;
+      col.push(sticky && sticky.has(key) ? { ...sticky.get(key), sticky: true } : makeCell(weighted(table)));
+    }
+    grid.push(col);
+  }
+  return grid;
+}
+
+function evaluate(grid, totalBet) {
+  const lineBet = totalBet / LINES.length;
+  const wins = [];
+  LINES.forEach((line, li) => {
+    const first = grid[0][line[0]];
+    if (first.s === "S" || first.s === "W") return;
+    let count = 1, mult = 0;
+    const cells = [[0, line[0]]];
+    for (let c = 1; c < 5; c++) {
+      const cell = grid[c][line[c]];
+      if (cell.s === first.s || cell.s === "W") {
+        count++;
+        if (cell.s === "W") mult += cell.m;   // wild multipliers on one line add up
+        cells.push([c, line[c]]);
+      } else break;
+    }
+    mult = mult || 1;
+    const pay = SYMBOLS[first.s].pays[count];
+    if (pay) wins.push({ line: li, sym: first.s, count, mult, amount: pay * lineBet * mult, cells });
+  });
+  const scatters = [];
+  grid.forEach((col, c) => col.forEach((cell, r) => { if (cell.s === "S") scatters.push([c, r]); }));
+  const scatterWin = scatters.length >= 3 ? SCATTER_PAY * totalBet : 0;
+  const total = wins.reduce((a, w) => a + w.amount, 0) + scatterWin;
+  return { wins, scatters, scatterWin, total };
+}
+
+function stickyFrom(grid, prev) {
+  const m = new Map(prev || []);
+  grid.forEach((col, c) => col.forEach((cell, r) => { if (cell.s === "W") m.set(c + ":" + r, { s: "W", m: cell.m }); }));
+  return m;
+}
+
+// Quick payout check in the console: __simulate(1e6)
+window.__simulate = function (rounds = 200000) {
+  const bet = 20;
+  let wagered = 0, paid = 0, hits = 0, features = 0, fsPaid = 0;
+  for (let i = 0; i < rounds; i++) {
+    wagered += bet;
+    const g = spinGrid(false);
+    const res = evaluate(g, bet);
+    paid += res.total;
+    if (res.total > 0) hits++;
+    if (res.scatters.length >= 3) {
+      features++;
+      let left = weighted(FS_COUNTS.map((n, k) => [n, FS_COUNT_WEIGHTS[k]]));
+      let sticky = new Map();
+      while (left-- > 0) {
+        const fg = spinGrid(true, sticky);
+        sticky = stickyFrom(fg, sticky);
+        const fr = evaluate(fg, bet);
+        paid += fr.total; fsPaid += fr.total;
+      }
+    }
+  }
+  return { rtp: +(paid / wagered * 100).toFixed(2), hitRate: +(hits / rounds * 100).toFixed(1),
+           featureEvery: Math.round(rounds / Math.max(features, 1)), fsShare: +(fsPaid / Math.max(paid, 1) * 100).toFixed(1) };
+};
+
+/* ---------- game server ---------- */
+// Everything with coins goes through the game server: it checks the huEVO launch signature, keeps the
+// balance in huEVO coins and draws every outcome. The page only shows what the server answers.
+// The relay on deno.dev opens from Russia, where many providers block *.vercel.app; the direct
+// address is the fallback. The first one that answers is used.
+const SERVERS = ["https://purple-sawfish-6360.nullifiedmember.deno.net", "https://nullified-casino-server.vercel.app"];
+let SERVER = SERVERS[0];
+async function pickServer() {
+  for (const s of SERVERS) {
+    try {
+      const r = await fetch(s + "/", { signal: AbortSignal.timeout(4000) });
+      if (r.ok) { SERVER = s; return; }
+    } catch {}
+  }
+}
+// live: the last poll got through; seq counts game actions so a poll that crossed one is not trusted;
+// holdUntil keeps a poll from showing a result an animation is still about to reveal
+const Net = { token: "", user: null, test: false, live: false, lastWin: 0, seq: 0, holdUntil: 0, polling: false, wake: null, offset: 0 };   // offset: server clock - ours
+const Wallet = {
+  value: 0,
+  get() { return this.value; },
+  set(v, fromPoll) {
+    if (typeof v !== "number" || !isFinite(v)) return;
+    if (!fromPoll) Net.holdUntil = 0;
+    this.value = v; refreshBalances();
+  },
+};
+function refreshBalances() {
+  for (const id of ["bal", "hubBal", "mBal", "bjBal", "cBal", "dBal", "uBal", "cBal2"]) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = fmt(Wallet.value);
+  }
+}
+// POST to the game server. The fresh balance in a reply is applied at once, unless the caller shows
+// an animation first and applies it itself (keepBalance).
+async function api(path, body, { keepBalance = false, retried = false } = {}) {
+  let r, j = {};
+  if (path !== "/api/poll") Net.seq++;
+  if (keepBalance) Net.holdUntil = Date.now() + 15000;
+  try {
+    r = await fetch(SERVER + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + Net.token }, body: JSON.stringify(body || {}) });
+    j = await r.json().catch(() => ({}));
+  } catch { throw new Error("Нет связи с сервером игры"); }
+  if (r.status === 401 && path !== "/api/login" && !retried) { await login(); return api(path, body, { keepBalance, retried: true }); }  // the session ran out
+  if (!j.ok) { if (typeof j.balance === "number") Wallet.set(j.balance); const e = new Error(j.error || "Ошибка сервера"); e.data = j; throw e; }
+  if (!keepBalance && path !== "/api/poll" && typeof j.balance === "number") Wallet.set(j.balance);
+  return j;
+}
+// huEVO passes signed hu_* params in the game URL; the SDK also hands them over.
+function launchParams() {
+  try { if (window.huevo && huevo.launchParams) { const p = huevo.launchParams(); if (p && p.hu_user_id) return p; } } catch {}
+  const p = {};
+  new URLSearchParams(location.search).forEach((v, k) => { if (k.startsWith("hu_")) p[k] = v; });
+  return p;
+}
+async function login() {
+  const launch = launchParams();
+  if (!launch.hu_user_id) { $("gate").classList.add("on"); throw new Error("Открой игру через huEVO"); }
+  const j = await api("/api/login", { launch });
+  Net.token = j.token; Net.user = j.user; Net.test = !!j.test;
+  $("gate").classList.remove("on");
+  $("who").textContent = j.user.name;
+  document.querySelector(".test").textContent = Net.test ? "ТЕСТОВЫЙ РЕЖИМ huEVO" : "МОНЭТКИ huEVO";
+  takeWins(j.wins);
+  Net.live = true;
+  pollLoop();
+  return j;
+}
+// Live state comes by polling: shared Crash rounds, Duel rooms, everyone's wins and the balance.
+// It polls fast only where something moves: the bat's flight and a player waiting in a Duel room.
+function pollDelay() {
+  if (document.hidden) return 20000;
+  if (view === "crash") return crash.phase === "fly" ? 300 : 1000;
+  if (view === "duel") return duel.phase === "wait" ? 1000 : 2500;
+  return 8000;
+}
+function pollNow() { if (Net.wake) Net.wake(); }
+const pollWait = (ms) => new Promise((resolve) => {
+  const t = setTimeout(resolve, ms);
+  Net.wake = () => { clearTimeout(t); resolve(); };
+});
+async function pollLoop() {
+  if (Net.polling) return;
+  Net.polling = true;
+  for (;;) {
+    const seq = Net.seq, sent = Date.now();
+    try {
+      const j = await api("/api/poll", { since: Net.lastWin, crash: view === "crash", duel: view === "duel" });
+      Net.live = true;
+      if (j.now) Net.offset = j.now - (sent + Date.now()) / 2;
+      takeWins(j.wins);
+      if (j.crash) crashOnState(j.crash, (sent + Date.now()) / 2);
+      if (j.duel) duelOnPoll(j.duel, j.balance);
+      if (seq === Net.seq && Date.now() > Net.holdUntil) Wallet.set(j.balance, true);
+    } catch { Net.live = false; }
+    await pollWait(pollDelay());
+  }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollNow(); });
+function takeWins(wins) {
+  for (const w of (wins || []).slice().reverse()) if (w.id > Net.lastWin) { Net.lastWin = w.id; pushWin(w); }
+}
+function toast(text, bad) {
+  const t = $("toast");
+  t.textContent = text; t.className = "toast on" + (bad ? " bad" : "");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.className = "toast"; }, 3200);
+}
+
+/* ---------- UI ---------- */
+const $ = (id) => document.getElementById(id);
+const reelsEl = $("reels");
+const reels = [];
+for (let c = 0; c < 5; c++) {
+  const reel = document.createElement("div");
+  reel.className = "reel";
+  const strip = document.createElement("div");
+  strip.className = "strip";
+  reel.appendChild(strip);
+  reelsEl.appendChild(reel);
+  reels.push(strip);
+}
+
+/* ---------- pixel sprites ---------- */
+// Every symbol is drawn into a tiny canvas, reduced to a few grey levels and
+// shown scaled up without smoothing, so the whole game reads as low-res pixel art.
+const SPR = {};
+function crunch(ctx, w, h, levels = 5) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    let l = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+    l = Math.max(0, Math.min(255, (l - 128) * 1.35 + 150));
+    const q = Math.round(l / 255 * (levels - 1)) * (255 / (levels - 1));
+    d[i] = d[i + 1] = d[i + 2] = q;
+    d[i + 3] = d[i + 3] > 100 ? 255 : 0;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function sprite(draw, w = 28, h = w) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const x = c.getContext("2d");
+  draw(x, w, h);
+  crunch(x, w, h);
+  return c.toDataURL();
+}
+function glyph(text, font, color) {
+  return sprite((x, w, h) => {
+    x.font = font(w); x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = color;
+    x.fillText(text, w / 2, h / 2 + h * 0.05);
+  });
+}
+function stainedGlass(x, w, h) {
+  const arch = new Path2D();
+  arch.moveTo(1, h - 1); arch.lineTo(1, h * 0.42);
+  arch.quadraticCurveTo(1, h * 0.12, w / 2, 1);
+  arch.quadraticCurveTo(w - 1, h * 0.12, w - 1, h * 0.42);
+  arch.lineTo(w - 1, h - 1); arch.closePath();
+  x.save(); x.clip(arch);
+  const tones = ["#f2f2f2", "#9a9a9a", "#d0d0d0", "#6a6a6a", "#bdbdbd", "#e6e6e6", "#7c7c7c", "#adadad"];
+  const cols = 3, rows = 5;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    x.fillStyle = tones[(r * 3 + c * 5) % tones.length];
+    x.fillRect(c * w / cols, r * h / rows, w / cols + 1, h / rows + 1);
+  }
+  x.fillStyle = "#fff"; x.beginPath(); x.arc(w / 2, h * 0.3, w * 0.16, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = "#111"; x.lineWidth = 1.6;
+  for (let c = 1; c < cols; c++) { x.beginPath(); x.moveTo(c * w / cols, h * 0.3); x.lineTo(c * w / cols, h); x.stroke(); }
+  for (let r = 2; r < rows; r++) { x.beginPath(); x.moveTo(0, r * h / rows); x.lineTo(w, r * h / rows); x.stroke(); }
+  x.restore();
+  x.lineWidth = 2.2; x.strokeStyle = "#111"; x.stroke(arch);
+}
+// Game icons. They used to be system emoji, which look different on every OS (and are missing on
+// some), so each one is drawn here with shaded vector shapes on a 112px canvas, shrunk to 28px and
+// run through crunch() - the same soft, grey, low-res look the emoji had, identical on every device.
+const ICON_SIZE = 112;
+function grad(x, x0, y0, x1, y1, stops) {
+  const g = x.createLinearGradient(x0, y0, x1, y1);
+  stops.forEach(([o, c]) => g.addColorStop(o, c));
+  return g;
+}
+function rgrad(x, cx, cy, r0, r1, stops) {
+  const g = x.createRadialGradient(cx, cy, r0, cx, cy, r1);
+  stops.forEach(([o, c]) => g.addColorStop(o, c));
+  return g;
+}
+function shape(x, fill, stroke, lw, build) {
+  x.beginPath(); build(); x.closePath();
+  x.fillStyle = fill; x.fill();
+  if (stroke) { x.lineWidth = lw; x.strokeStyle = stroke; x.lineJoin = "round"; x.stroke(); }
+}
+const BONE = [[0, "#fbf6e8"], [.6, "#d8d0bc"], [1, "#8a8270"]];
+const METAL = [[0, "#ffffff"], [.45, "#c8c8c8"], [1, "#6a6a6a"]];
+const ICON_DRAW = {
+  skull(x) {
+    shape(x, rgrad(x, 44, 34, 6, 60, BONE), "#3a3a3a", 3, () => {
+      x.moveTo(20, 54); x.bezierCurveTo(16, 16, 96, 16, 92, 54); x.bezierCurveTo(92, 68, 84, 74, 80, 76);
+      x.lineTo(80, 92); x.lineTo(32, 92); x.lineTo(32, 76); x.bezierCurveTo(26, 74, 20, 68, 20, 54);
+    });
+    x.fillStyle = "#2a2a2a";
+    for (const ex of [40, 72]) { x.beginPath(); x.ellipse(ex, 56, 11, 12, 0, 0, Math.PI * 2); x.fill(); }
+    x.beginPath(); x.moveTo(56, 64); x.lineTo(50, 76); x.lineTo(62, 76); x.closePath(); x.fill();
+    x.strokeStyle = "#3a3a3a"; x.lineWidth = 3;
+    for (let tx = 40; tx <= 72; tx += 8) { x.beginPath(); x.moveTo(tx, 82); x.lineTo(tx, 92); x.stroke(); }
+    x.beginPath(); x.moveTo(32, 84); x.lineTo(80, 84); x.stroke();
+  },
+  candle(x) {
+    x.fillStyle = rgrad(x, 56, 26, 2, 30, [[0, "rgba(255,240,200,.9)"], [1, "rgba(255,240,200,0)"]]);
+    x.fillRect(20, 0, 72, 60);
+    shape(x, rgrad(x, 56, 30, 2, 16, [[0, "#ffffff"], [.5, "#ffe080"], [1, "#e08020"]]), null, 0, () => {
+      x.moveTo(56, 6); x.bezierCurveTo(66, 20, 66, 34, 56, 38); x.bezierCurveTo(46, 34, 46, 20, 56, 6);
+    });
+    x.fillStyle = "#2a2a2a"; x.fillRect(54, 36, 4, 8);
+    shape(x, grad(x, 40, 0, 72, 0, [[0, "#cfc6b0"], [.35, "#fbf6e8"], [1, "#a8a090"]]), "#5a5448", 2.5, () => {
+      x.moveTo(40, 46); x.lineTo(72, 46); x.lineTo(72, 92); x.lineTo(40, 92);
+    });
+    shape(x, "#fbf6e8", null, 0, () => { x.moveTo(40, 46); x.lineTo(50, 46); x.quadraticCurveTo(48, 62, 44, 64); x.quadraticCurveTo(40, 60, 40, 52); });
+    shape(x, grad(x, 0, 90, 0, 106, METAL), "#3a3a3a", 2.5, () => {
+      x.moveTo(22, 92); x.lineTo(90, 92); x.quadraticCurveTo(92, 104, 56, 106); x.quadraticCurveTo(20, 104, 22, 92);
+    });
+  },
+  key(x) {
+    const fill = grad(x, 0, 30, 0, 80, [[0, "#ffffff"], [.5, "#e4e4e4"], [1, "#9a9a9a"]]);
+    x.lineWidth = 11; x.strokeStyle = fill;
+    x.beginPath(); x.arc(30, 56, 17, 0, Math.PI * 2); x.stroke();
+    x.lineWidth = 2; x.strokeStyle = "#3a2e14"; x.beginPath(); x.arc(30, 56, 23, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(30, 56, 11, 0, Math.PI * 2); x.stroke();
+    shape(x, fill, "#3a2e14", 2, () => { x.moveTo(50, 51); x.lineTo(104, 51); x.lineTo(104, 61); x.lineTo(50, 61); });
+    shape(x, fill, "#3a2e14", 2, () => { x.moveTo(84, 61); x.lineTo(84, 76); x.lineTo(92, 76); x.lineTo(92, 68); x.lineTo(98, 68); x.lineTo(98, 61); });
+  },
+  rose(x) {
+    shape(x, grad(x, 0, 60, 0, 108, [[0, "#a8d098"], [1, "#6a9a5a"]]), "#1e2e18", 2, () => {
+      x.moveTo(54, 58); x.quadraticCurveTo(50, 84, 58, 106); x.lineTo(62, 106); x.quadraticCurveTo(56, 84, 60, 58);
+    });
+    shape(x, "#5a8a4a", "#1e2e18", 2, () => { x.moveTo(57, 82); x.quadraticCurveTo(76, 70, 88, 76); x.quadraticCurveTo(76, 88, 57, 86); });
+    shape(x, "#5a8a4a", "#1e2e18", 2, () => { x.moveTo(56, 92); x.quadraticCurveTo(38, 84, 28, 90); x.quadraticCurveTo(40, 100, 56, 96); });
+    const petal = rgrad(x, 50, 26, 2, 34, [[0, "#ffd0d0"], [.5, "#f06060"], [1, "#a02020"]]);
+    shape(x, petal, "#3a0404", 2.5, () => {
+      x.moveTo(56, 62); x.bezierCurveTo(30, 60, 24, 34, 34, 20); x.quadraticCurveTo(44, 26, 46, 18); x.quadraticCurveTo(56, 10, 66, 18);
+      x.quadraticCurveTo(70, 26, 78, 20); x.bezierCurveTo(88, 34, 82, 60, 56, 62);
+    });
+    x.strokeStyle = "#5a0808"; x.lineWidth = 2.5;
+    x.beginPath(); x.moveTo(42, 34); x.bezierCurveTo(48, 50, 66, 50, 70, 32); x.stroke();
+    x.beginPath(); x.moveTo(50, 28); x.bezierCurveTo(54, 38, 62, 36, 62, 26); x.stroke();
+  },
+  bell(x) {
+    // a squat, wide church bell
+    shape(x, grad(x, 14, 0, 98, 0, [[0, "#8a6a28"], [.3, "#ffe8a0"], [.55, "#d8b050"], [1, "#6a4a18"]]), "#3a2a0a", 3, () => {
+      x.moveTo(56, 26); x.bezierCurveTo(84, 26, 86, 44, 86, 58); x.bezierCurveTo(86, 70, 92, 78, 104, 84);
+      x.lineTo(8, 84); x.bezierCurveTo(20, 78, 26, 70, 26, 58); x.bezierCurveTo(26, 44, 28, 26, 56, 26);
+    });
+    shape(x, grad(x, 0, 82, 0, 92, METAL), "#3a2a0a", 2.5, () => { x.moveTo(4, 82); x.lineTo(108, 82); x.lineTo(106, 92); x.lineTo(6, 92); });
+    x.fillStyle = rgrad(x, 54, 96, 1, 10, [[0, "#fff0c0"], [1, "#8a6a28"]]); x.beginPath(); x.arc(56, 98, 8, 0, Math.PI * 2); x.fill();
+    x.fillStyle = "#6a4a18"; x.beginPath(); x.arc(56, 22, 7, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = "rgba(255,255,255,.7)"; x.lineWidth = 4; x.beginPath(); x.moveTo(42, 36); x.quadraticCurveTo(36, 52, 36, 74); x.stroke();
+  },
+  // the sword hidden under a mine: long steel blade, crossguard, wrapped grip, round pommel
+  sword(x) {
+    x.save(); x.translate(56, 56); x.rotate(-Math.PI / 4);
+    shape(x, grad(x, 0, -8, 0, 8, [[0, "#ffffff"], [.5, "#cfcfcf"], [1, "#7a7a7a"]]), "#3a3a3a", 2.5, () => {
+      x.moveTo(-26, -7); x.lineTo(56, -7); x.lineTo(70, 0); x.lineTo(56, 7); x.lineTo(-26, 7);
+    });
+    x.strokeStyle = "#8a8a8a"; x.lineWidth = 2.5; x.beginPath(); x.moveTo(-24, 0); x.lineTo(58, 0); x.stroke();     // fuller
+    shape(x, grad(x, -36, 0, -26, 0, [[0, "#6a6a6a"], [.5, "#e6e6e6"], [1, "#6a6a6a"]]), "#2a2a2a", 2.5, () => {
+      x.moveTo(-36, -24); x.lineTo(-26, -24); x.lineTo(-26, 24); x.lineTo(-36, 24);
+    });
+    shape(x, grad(x, 0, -6, 0, 6, [[0, "#9a6a48"], [1, "#3a2010"]]), "#1e1008", 2.5, () => { x.moveTo(-60, -6); x.lineTo(-36, -6); x.lineTo(-36, 6); x.lineTo(-60, 6); });
+    x.strokeStyle = "#2a1408"; x.lineWidth = 2; for (const gx of [-54, -48, -42]) { x.beginPath(); x.moveTo(gx, -6); x.lineTo(gx + 3, 6); x.stroke(); }
+    x.fillStyle = rgrad(x, -66, -2, 1, 9, [[0, "#ffffff"], [1, "#7a7a7a"]]); x.beginPath(); x.arc(-66, 0, 8, 0, Math.PI * 2); x.fill();
+    x.restore();
+  },
+  spade(x) {
+    shape(x, rgrad(x, 44, 36, 4, 60, [[0, "#ffffff"], [.5, "#c8c8c8"], [1, "#6a6a6a"]]), "#2a2a2a", 3, () => {
+      x.moveTo(56, 8); x.bezierCurveTo(70, 30, 98, 42, 98, 64); x.bezierCurveTo(98, 82, 76, 88, 62, 74);
+      x.quadraticCurveTo(64, 92, 74, 102); x.lineTo(38, 102); x.quadraticCurveTo(48, 92, 50, 74);
+      x.bezierCurveTo(36, 88, 14, 82, 14, 64); x.bezierCurveTo(14, 42, 42, 30, 56, 8);
+    });
+  },
+  cross(x) {
+    shape(x, grad(x, 30, 0, 82, 0, [[0, "#8a8a8a"], [.4, "#f0f0f0"], [1, "#6a6a6a"]]), "#2a2a2a", 3, () => {
+      x.moveTo(48, 6); x.lineTo(64, 6); x.lineTo(64, 30); x.lineTo(88, 30); x.lineTo(88, 46); x.lineTo(64, 46);
+      x.lineTo(64, 106); x.lineTo(48, 106); x.lineTo(48, 46); x.lineTo(24, 46); x.lineTo(24, 30); x.lineTo(48, 30);
+    });
+  },
+  bone(x) {
+    x.save(); x.translate(56, 56); x.rotate(-Math.PI / 6);
+    const fill = grad(x, 0, -14, 0, 14, BONE);
+    shape(x, fill, "#5a5448", 2.5, () => { x.moveTo(-34, -8); x.lineTo(34, -8); x.lineTo(34, 8); x.lineTo(-34, 8); });
+    x.fillStyle = fill; x.strokeStyle = "#5a5448"; x.lineWidth = 2.5;
+    for (const [bx, by] of [[-38, -9], [-38, 9], [38, -9], [38, 9]]) { x.beginPath(); x.arc(bx, by, 11, 0, Math.PI * 2); x.fill(); x.stroke(); }
+    x.fillRect(-34, -6, 68, 12);
+    x.restore();
+  },
+  ring(x) {
+    x.lineWidth = 12; x.strokeStyle = grad(x, 20, 40, 92, 100, [[0, "#fff0c0"], [.5, "#c8a050"], [1, "#6a4a18"]]);
+    x.beginPath(); x.ellipse(56, 70, 28, 26, 0, 0, Math.PI * 2); x.stroke();
+    x.lineWidth = 2; x.strokeStyle = "#3a2a0a";
+    x.beginPath(); x.ellipse(56, 70, 34, 32, 0, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.ellipse(56, 70, 22, 20, 0, 0, Math.PI * 2); x.stroke();
+    shape(x, rgrad(x, 50, 26, 2, 22, [[0, "#ffffff"], [.4, "#ff6060"], [1, "#6a0808"]]), "#2a0404", 2.5, () => {
+      x.moveTo(42, 32); x.lineTo(70, 32); x.lineTo(78, 40); x.lineTo(56, 60); x.lineTo(34, 40);
+    });
+    x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = 2; x.beginPath(); x.moveTo(34, 40); x.lineTo(78, 40); x.moveTo(48, 32); x.lineTo(56, 60); x.lineTo(64, 32); x.stroke();
+  },
+  dagger(x) {
+    shape(x, grad(x, 46, 0, 66, 0, [[0, "#7a7a7a"], [.45, "#ffffff"], [1, "#8a8a8a"]]), "#3a3a3a", 2.5, () => {
+      x.moveTo(56, 4); x.lineTo(65, 18); x.lineTo(63, 66); x.lineTo(49, 66); x.lineTo(47, 18);
+    });
+    x.strokeStyle = "#9a9a9a"; x.lineWidth = 2; x.beginPath(); x.moveTo(56, 10); x.lineTo(56, 64); x.stroke();
+    shape(x, grad(x, 0, 64, 0, 74, [[0, "#f0e0b0"], [1, "#6a5428"]]), "#3a2e14", 2.5, () => { x.moveTo(30, 66); x.lineTo(82, 66); x.lineTo(78, 74); x.lineTo(34, 74); });
+    shape(x, grad(x, 50, 0, 62, 0, [[0, "#3a2010"], [.5, "#8a5a38"], [1, "#3a2010"]]), "#1e1008", 2.5, () => { x.moveTo(50, 74); x.lineTo(62, 74); x.lineTo(62, 96); x.lineTo(50, 96); });
+    x.fillStyle = rgrad(x, 54, 100, 1, 9, [[0, "#ff8a8a"], [1, "#6a0808"]]); x.beginPath(); x.arc(56, 102, 7, 0, Math.PI * 2); x.fill();
+  },
+  urn(x) {
+    const clay = grad(x, 26, 0, 86, 0, [[0, "#6a6a6a"], [.35, "#e0e0e0"], [1, "#4a4a4a"]]);
+    x.lineWidth = 6; x.strokeStyle = "#8a8a8a";
+    x.beginPath(); x.moveTo(40, 28); x.bezierCurveTo(18, 28, 18, 52, 32, 54); x.stroke();
+    x.beginPath(); x.moveTo(72, 28); x.bezierCurveTo(94, 28, 94, 52, 80, 54); x.stroke();
+    shape(x, clay, "#2a2a2a", 3, () => {
+      x.moveTo(42, 20); x.lineTo(70, 20); x.lineTo(66, 34); x.bezierCurveTo(92, 44, 92, 80, 68, 94);
+      x.lineTo(74, 104); x.lineTo(38, 104); x.lineTo(44, 94); x.bezierCurveTo(20, 80, 20, 44, 46, 34);
+    });
+    shape(x, grad(x, 0, 12, 0, 22, METAL), "#2a2a2a", 2.5, () => { x.moveTo(36, 14); x.lineTo(76, 14); x.lineTo(74, 22); x.lineTo(38, 22); });
+    x.strokeStyle = "#3a3a3a"; x.lineWidth = 3;
+    x.beginPath(); x.moveTo(30, 56); x.quadraticCurveTo(56, 64, 82, 56); x.stroke();
+    x.beginPath(); x.moveTo(32, 74); x.quadraticCurveTo(56, 82, 80, 74); x.stroke();
+  },
+  goblet(x) {
+    const gold = grad(x, 20, 0, 92, 0, [[0, "#6a4a18"], [.35, "#ffe8a0"], [1, "#6a4a18"]]);
+    shape(x, gold, "#3a2a0a", 3, () => { x.moveTo(20, 14); x.lineTo(92, 14); x.bezierCurveTo(92, 48, 76, 58, 62, 60); x.lineTo(50, 60); x.bezierCurveTo(36, 58, 20, 48, 20, 14); });
+    shape(x, rgrad(x, 50, 18, 2, 30, [[0, "#ff6060"], [.6, "#9a1010"], [1, "#4a0404"]]), null, 0, () => { x.moveTo(24, 18); x.lineTo(88, 18); x.bezierCurveTo(86, 30, 76, 34, 56, 34); x.bezierCurveTo(36, 34, 26, 30, 24, 18); });
+    shape(x, gold, "#3a2a0a", 2.5, () => { x.moveTo(51, 60); x.lineTo(61, 60); x.lineTo(60, 90); x.lineTo(52, 90); });
+    shape(x, gold, "#3a2a0a", 2.5, () => { x.moveTo(52, 88); x.lineTo(60, 88); x.lineTo(80, 100); x.lineTo(80, 106); x.lineTo(32, 106); x.lineTo(32, 100); });
+    x.fillStyle = "#9a1010"; x.beginPath(); x.moveTo(30, 34); x.quadraticCurveTo(26, 46, 30, 48); x.quadraticCurveTo(34, 46, 30, 34); x.fill();
+  },
+  crown(x) {
+    shape(x, grad(x, 0, 20, 0, 90, [[0, "#fff0c0"], [.5, "#d8b050"], [1, "#6a4a18"]]), "#3a2a0a", 3, () => {
+      x.moveTo(12, 86); x.lineTo(8, 32); x.lineTo(32, 56); x.lineTo(56, 22); x.lineTo(80, 56); x.lineTo(104, 32); x.lineTo(100, 86);
+    });
+    shape(x, grad(x, 0, 80, 0, 98, [[0, "#d8b050"], [1, "#5a3a10"]]), "#3a2a0a", 2.5, () => { x.moveTo(12, 82); x.lineTo(100, 82); x.lineTo(100, 98); x.lineTo(12, 98); });
+    for (const [gx, gy, r, col] of [[8, 30, 6, "#ffffff"], [56, 20, 7, "#ffffff"], [104, 30, 6, "#ffffff"], [32, 90, 5, "#c01c1c"], [56, 90, 6, "#c01c1c"], [80, 90, 5, "#c01c1c"]]) {
+      x.fillStyle = rgrad(x, gx - r / 3, gy - r / 3, 1, r, [[0, "#ffffff"], [1, col === "#ffffff" ? "#a8a8a8" : col]]);
+      x.beginPath(); x.arc(gx, gy, r, 0, Math.PI * 2); x.fill();
+    }
+  },
+  heart(x) {
+    shape(x, rgrad(x, 40, 34, 4, 70, [[0, "#ffe0e0"], [.4, "#f07070"], [1, "#a02828"]]), "#2a0202", 3, () => {
+      x.moveTo(56, 100); x.bezierCurveTo(20, 74, 6, 56, 10, 36); x.bezierCurveTo(14, 16, 44, 10, 56, 32);
+      x.bezierCurveTo(68, 10, 98, 16, 102, 36); x.bezierCurveTo(106, 56, 92, 74, 56, 100);
+    });
+    x.fillStyle = "rgba(255,255,255,.75)"; x.beginPath(); x.ellipse(32, 36, 7, 11, -.5, 0, Math.PI * 2); x.fill();
+  },
+  // ---- case loot ----
+  nail(x) {
+    x.save(); x.translate(56, 56); x.rotate(Math.PI / 5);
+    shape(x, grad(x, -6, 0, 6, 0, [[0, "#6a6a6a"], [.5, "#f0f0f0"], [1, "#5a5a5a"]]), "#2a2a2a", 2.5, () => {
+      x.moveTo(-5, -38); x.lineTo(5, -38); x.lineTo(4, 34); x.lineTo(0, 50); x.lineTo(-4, 34);
+    });
+    shape(x, grad(x, 0, -50, 0, -36, METAL), "#2a2a2a", 2.5, () => { x.ellipse(0, -42, 19, 6, 0, 0, Math.PI * 2); });
+    x.restore();
+  },
+  coin(x) {
+    shape(x, rgrad(x, 44, 42, 4, 50, [[0, "#fff4c8"], [.5, "#d8b050"], [1, "#6a4a18"]]), "#3a2a0a", 3, () => { x.arc(56, 56, 42, 0, Math.PI * 2); });
+    x.lineWidth = 3; x.strokeStyle = "#8a6a28"; x.beginPath(); x.arc(56, 56, 31, 0, Math.PI * 2); x.stroke();
+    x.fillStyle = "#7a5a20"; x.fillRect(52, 36, 8, 40); x.fillRect(41, 47, 30, 8);
+  },
+  stake(x) {
+    x.save(); x.translate(56, 56); x.rotate(-Math.PI / 4);
+    shape(x, grad(x, 0, -9, 0, 9, [[0, "#c89a68"], [.5, "#8a5a30"], [1, "#3a2010"]]), "#1e1008", 2.5, () => {
+      x.moveTo(-52, -9); x.lineTo(26, -9); x.lineTo(56, 0); x.lineTo(26, 9); x.lineTo(-52, 9);
+    });
+    x.strokeStyle = "#4a2a10"; x.lineWidth = 2;
+    x.beginPath(); x.moveTo(-46, -3); x.lineTo(18, -3); x.moveTo(-40, 4); x.lineTo(8, 4); x.stroke();
+    x.restore();
+  },
+  lantern(x) {
+    x.lineWidth = 5; x.strokeStyle = "#5a5a5a"; x.beginPath(); x.arc(56, 16, 10, Math.PI, 0); x.stroke();
+    shape(x, grad(x, 0, 16, 0, 30, METAL), "#2a2a2a", 2.5, () => { x.moveTo(34, 30); x.lineTo(56, 16); x.lineTo(78, 30); });
+    shape(x, rgrad(x, 56, 62, 4, 32, [[0, "#ffffff"], [.4, "#ffe080"], [1, "#a06010"]]), "#2a2a2a", 3, () => {
+      x.moveTo(36, 30); x.lineTo(76, 30); x.lineTo(80, 88); x.lineTo(32, 88);
+    });
+    x.strokeStyle = "#2a2a2a"; x.lineWidth = 3; x.beginPath(); x.moveTo(56, 30); x.lineTo(56, 88); x.moveTo(34, 59); x.lineTo(78, 59); x.stroke();
+    shape(x, grad(x, 0, 88, 0, 100, METAL), "#2a2a2a", 2.5, () => { x.moveTo(26, 88); x.lineTo(86, 88); x.lineTo(82, 100); x.lineTo(30, 100); });
+  },
+  book(x) {
+    shape(x, "#f0e8d0", "#3a2e14", 2, () => { x.moveTo(30, 20); x.lineTo(94, 16); x.lineTo(94, 92); x.lineTo(30, 98); });
+    shape(x, grad(x, 18, 0, 86, 0, [[0, "#6a4a40"], [.45, "#b89080"], [1, "#5a3a30"]]), "#2a1410", 3, () => {
+      x.moveTo(18, 14); x.lineTo(86, 10); x.lineTo(86, 90); x.lineTo(18, 96);
+    });
+    shape(x, grad(x, 18, 0, 28, 0, [[0, "#3a2420"], [1, "#7a5a50"]]), "#2a1410", 2, () => { x.moveTo(18, 14); x.lineTo(28, 14); x.lineTo(28, 96); x.lineTo(18, 96); });
+    x.fillStyle = grad(x, 0, 30, 0, 80, [[0, "#fff0c0"], [1, "#8a6a28"]]);
+    x.fillRect(53, 30, 8, 46); x.fillRect(42, 42, 30, 8);
+  },
+  potion(x) {
+    shape(x, rgrad(x, 46, 60, 4, 42, [[0, "#ffffff"], [.3, "#e0e0e0"], [1, "#7a7a7a"]]), "#2a2a2a", 3, () => {
+      x.moveTo(48, 18); x.lineTo(64, 18); x.lineTo(64, 40); x.bezierCurveTo(98, 50, 98, 102, 56, 104); x.bezierCurveTo(14, 102, 14, 50, 48, 40);
+    });
+    shape(x, rgrad(x, 50, 78, 4, 34, [[0, "#ff8080"], [.5, "#c01c1c"], [1, "#5a0606"]]), null, 0, () => {
+      x.moveTo(22, 70); x.bezierCurveTo(40, 62, 72, 78, 90, 70); x.bezierCurveTo(90, 92, 78, 101, 56, 101); x.bezierCurveTo(34, 101, 22, 92, 22, 70);
+    });
+    shape(x, grad(x, 0, 6, 0, 20, [[0, "#c89a68"], [1, "#5a3a18"]]), "#1e1008", 2.5, () => { x.moveTo(45, 6); x.lineTo(67, 6); x.lineTo(65, 20); x.lineTo(47, 20); });
+    x.fillStyle = "rgba(255,255,255,.85)"; x.beginPath(); x.ellipse(36, 58, 5, 11, .4, 0, Math.PI * 2); x.fill();
+  },
+  amulet(x) {
+    x.lineWidth = 4; x.strokeStyle = "#a8a8a8";
+    x.beginPath(); x.moveTo(24, 6); x.quadraticCurveTo(56, 66, 88, 6); x.stroke();
+    shape(x, grad(x, 28, 0, 84, 0, [[0, "#6a4a18"], [.4, "#ffe8a0"], [1, "#6a4a18"]]), "#3a2a0a", 3, () => { x.ellipse(56, 74, 27, 31, 0, 0, Math.PI * 2); });
+    shape(x, rgrad(x, 50, 68, 2, 18, [[0, "#ffffff"], [.4, "#ff4040"], [1, "#5a0404"]]), "#2a0404", 2, () => { x.ellipse(56, 74, 14, 17, 0, 0, Math.PI * 2); });
+  },
+  // a vampire's upper jaw: gum, a row of small teeth and two long fangs
+  fang(x) {
+    shape(x, rgrad(x, 56, 20, 4, 60, [[0, "#f08080"], [.6, "#b03030"], [1, "#5a0808"]]), "#2a0202", 3, () => {
+      x.moveTo(6, 30); x.bezierCurveTo(20, 4, 92, 4, 106, 30); x.bezierCurveTo(92, 44, 20, 44, 6, 30);
+    });
+    for (let tx = 38; tx <= 70; tx += 8) {
+      shape(x, grad(x, 0, 36, 0, 52, BONE), "#5a5448", 2, () => { x.moveTo(tx - 3.5, 38); x.lineTo(tx + 3.5, 38); x.lineTo(tx + 3, 52); x.lineTo(tx - 3, 52); });
+    }
+    for (const fx of [24, 88]) {
+      shape(x, grad(x, fx - 10, 0, fx + 10, 0, BONE), "#3a3a3a", 2.5, () => {
+        x.moveTo(fx - 10, 32); x.lineTo(fx + 10, 34); x.quadraticCurveTo(fx + 5, 70, fx + (fx < 56 ? 4 : -4), 98); x.quadraticCurveTo(fx - 5, 66, fx - 10, 32);
+      });
+    }
+  },
+  garlic(x) {
+    shape(x, rgrad(x, 44, 58, 4, 48, [[0, "#ffffff"], [.6, "#e8e0d0"], [1, "#9a9080"]]), "#4a4438", 3, () => {
+      x.moveTo(56, 24); x.bezierCurveTo(72, 40, 100, 52, 96, 76); x.bezierCurveTo(92, 100, 20, 100, 16, 76); x.bezierCurveTo(12, 52, 40, 40, 56, 24);
+    });
+    x.strokeStyle = "#8a8270"; x.lineWidth = 2.5;
+    x.beginPath(); x.moveTo(54, 32); x.quadraticCurveTo(36, 60, 38, 94); x.stroke();
+    x.beginPath(); x.moveTo(58, 32); x.quadraticCurveTo(76, 60, 74, 94); x.stroke();
+    shape(x, grad(x, 0, 4, 0, 28, [[0, "#c8c0a8"], [1, "#8a8270"]]), "#4a4438", 2, () => { x.moveTo(52, 28); x.lineTo(53, 4); x.lineTo(60, 4); x.lineTo(60, 28); });
+  },
+  // a dead vampire laid out in an open coffin, a stake through the heart
+  corpse(x) {
+    shape(x, grad(x, 18, 0, 94, 0, [[0, "#5a4030"], [.5, "#b08860"], [1, "#4a3020"]]), "#1e1008", 3, () => {
+      x.moveTo(40, 2); x.lineTo(72, 2); x.lineTo(96, 30); x.lineTo(82, 110); x.lineTo(30, 110); x.lineTo(16, 30);
+    });
+    shape(x, "#5a1a1a", null, 0, () => { x.moveTo(42, 9); x.lineTo(70, 9); x.lineTo(89, 32); x.lineTo(77, 103); x.lineTo(35, 103); x.lineTo(23, 32); });
+    shape(x, grad(x, 30, 0, 82, 0, [[0, "#1a1a1a"], [.5, "#6a6a6a"], [1, "#1a1a1a"]]), "#000000", 2, () => {
+      x.moveTo(30, 44); x.lineTo(82, 44); x.lineTo(74, 101); x.lineTo(38, 101);
+    });
+    shape(x, rgrad(x, 52, 22, 2, 18, [[0, "#ffffff"], [1, "#c8c8d4"]]), "#2a2a2a", 2, () => { x.ellipse(56, 28, 15, 17, 0, 0, Math.PI * 2); });
+    x.fillStyle = "#0a0a0a";
+    x.beginPath(); x.moveTo(41, 24); x.quadraticCurveTo(56, 2, 71, 24); x.lineTo(56, 17); x.closePath(); x.fill();
+    x.fillRect(45, 28, 8, 3); x.fillRect(59, 28, 8, 3);
+    x.fillStyle = "#3a3a3a"; x.fillRect(50, 38, 12, 2);
+    shape(x, "#ffffff", "#3a3a3a", 1.5, () => { x.ellipse(47, 74, 9, 6, .5, 0, Math.PI * 2); });
+    shape(x, "#ffffff", "#3a3a3a", 1.5, () => { x.ellipse(65, 74, 9, 6, -.5, 0, Math.PI * 2); });
+    shape(x, grad(x, 52, 0, 60, 0, [[0, "#c89a68"], [1, "#4a2a10"]]), "#1e1008", 2, () => { x.moveTo(52, 46); x.lineTo(60, 46); x.lineTo(60, 64); x.lineTo(56, 70); x.lineTo(52, 64); });
+  },
+};
+// The bat is the one icon kept as flat 16x16 pixel art: white with red eyes, no grey crunch.
+const BAT_ICON = ["W......WW......W", "WW....WWWW....WW", "WWW..WRWWRW..WWW", "WWWWWWWWWWWWWWWW", "WWWWWWWWWWWWWWWW",
+  ".WWWLWWWWWWLWWW.", "..WL.LWWWWL.LW..", "..L....WW....L..", ".......LL......."];
+function batIcon() {
+  // 18x18 canvas with a 1px margin, so the 16px-wide bat fills the same share as the other icons
+  const c = document.createElement("canvas");
+  c.width = c.height = 18;
+  const x = c.getContext("2d"), pal = { W: "#ececec", L: "#a8a8a8", R: "#c01c1c" }, top = Math.floor((18 - BAT_ICON.length) / 2);
+  BAT_ICON.forEach((row, y) => [...row].forEach((ch, i) => { if (pal[ch]) { x.fillStyle = pal[ch]; x.fillRect(1 + i, top + y, 1, 1); } }));
+  return c.toDataURL();
+}
+// Bounding box of everything actually drawn on a canvas.
+function inkBox(c) {
+  const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (d[(y * c.width + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  return x1 < 0 ? [0, 0, c.width, c.height] : [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
+}
+// Draw large, crop to the drawing and fit it into the same 25px box (centred, aspect kept), so every
+// icon has the same visual size; then crunch to the game's grey pixel palette.
+const ICON_FIT = 25;
+// Red layers drawn over an icon after the grey crunch, so blood stays red (same 112px coordinates).
+const ICON_BLOOD = {
+  sword(x) {
+    // blood smeared over the upper blade and dripping straight down from it
+    x.save(); x.translate(56, 56); x.rotate(-Math.PI / 4);
+    x.fillStyle = "#b01414";
+    x.beginPath(); x.moveTo(20, -7); x.lineTo(56, -7); x.lineTo(70, 0); x.lineTo(56, 7); x.lineTo(34, 7);
+    x.quadraticCurveTo(30, 2, 26, 6); x.quadraticCurveTo(22, 0, 20, -7); x.fill();
+    x.restore();
+    x.fillStyle = "#8e0e0e";
+    for (const [dx, dy, len] of [[78, 44, 14], [88, 34, 9], [70, 52, 10]]) {
+      x.fillRect(dx - 2, dy, 4, len); x.beginPath(); x.arc(dx, dy + len, 3.5, 0, Math.PI * 2); x.fill();
+    }
+  },
+  fang(x) {
+    x.fillStyle = "#b01414";
+    for (const tip of [28, 84]) { x.beginPath(); x.moveTo(tip - 3, 84); x.quadraticCurveTo(tip, 104, tip, 108); x.quadraticCurveTo(tip + 4, 96, tip + 3, 84); x.fill(); }
+  },
+  corpse(x) {
+    // a wet stain around the stake
+    x.fillStyle = "#c01414"; x.beginPath(); x.ellipse(56, 66, 9, 6, 0, 0, Math.PI * 2); x.fill();
+    x.fillRect(54, 66, 4, 18);
+  },
+};
+function pixelIcon(name, size = 28) {
+  if (name === "bat") return batIcon();
+  const big = document.createElement("canvas");
+  big.width = big.height = ICON_SIZE;
+  ICON_DRAW[name](big.getContext("2d"));
+  let blood = null;
+  if (ICON_BLOOD[name]) { blood = document.createElement("canvas"); blood.width = blood.height = ICON_SIZE; ICON_BLOOD[name](blood.getContext("2d")); }
+  // fit by the union of the icon and its blood, so drips aren't cut off
+  let [bx, by, bw, bh] = inkBox(big);
+  if (blood) {
+    const [cx, cy, cw, ch] = inkBox(blood);
+    const x1 = Math.max(bx + bw, cx + cw), y1 = Math.max(by + bh, cy + ch);
+    bx = Math.min(bx, cx); by = Math.min(by, cy); bw = x1 - bx; bh = y1 - by;
+  }
+  const k = ICON_FIT / Math.max(bw, bh), dw = bw * k, dh = bh * k, ox = (size - dw) / 2, oy = (size - dh) / 2;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const x = c.getContext("2d");
+  x.imageSmoothingQuality = "high";
+  x.drawImage(big, bx, by, bw, bh, ox, oy, dw, dh);
+  crunch(x, size, size);
+  if (blood) {
+    const t = document.createElement("canvas"); t.width = t.height = size;
+    const tx = t.getContext("2d"); tx.drawImage(blood, bx, by, bw, bh, ox, oy, dw, dh);
+    const img = tx.getImageData(0, 0, size, size), d = img.data;
+    for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 90 ? 255 : 0;       // hard pixel edges, like the crunch
+    tx.putImageData(img, 0, 0);
+    x.drawImage(t, 0, 0);
+  }
+  return c.toDataURL();
+}
+const SYMBOL_ICON = { rott: "skull", pug: "bat", poodle: "candle", guide: "key", bone: "rose", S: "bell" };
+function buildSprites() {
+  const frak = (n) => `${Math.round(n * 0.92)}px UnifrakturMaguntia, serif`;
+  for (const [k, s] of Object.entries(SYMBOLS)) {
+    if (k === "W") SPR[k] = sprite(stainedGlass, 22, 30);
+    else if (s.royal) SPR[k] = glyph(s.face, frak, "#eeeeee");
+    else SPR[k] = pixelIcon(SYMBOL_ICON[k]);
+  }
+  SPR.knife = pixelIcon("sword");      // the "knife" under a mine is now a bloody sword
+  SPR.cross = pixelIcon("cross");
+  SPR.spade = pixelIcon("spade");
+}
+// Rasterise the inline cathedral SVG at 1/5 resolution and swap it for a pixelated canvas.
+async function pixelateBackdrop() {
+  const svg = document.querySelector(".backdrop svg");
+  const rect = svg.getBoundingClientRect();
+  const cw = Math.max(1, Math.round(rect.width / 5)), ch = Math.max(1, Math.round(rect.height / 5));
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+  await img.decode();
+  const vb = svg.viewBox.baseVal;
+  const scale = Math.max(cw / vb.width, ch / vb.height);
+  const dw = vb.width * scale, dh = vb.height * scale;
+  let canvas = document.querySelector(".backdrop canvas.px");
+  if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "px"; svg.after(canvas); }
+  canvas.width = cw; canvas.height = ch;
+  const x = canvas.getContext("2d");
+  x.drawImage(img, (cw - dw) / 2, ch - dh, dw, dh);
+  crunch(x, cw, ch, 4);
+  svg.style.display = "none";
+}
+// Bloody pixel sword cursor; the hotspot is the blade tip in the top-left corner.
+function buildCursor() {
+  const N = 16, px = new Map();
+  const set = (x, y, c) => { if (x >= 0 && y >= 0 && x < N && y < N) px.set(x + "," + y, c); };
+  for (let i = 0; i <= 9; i++) { set(i, i, "#ececec"); set(i + 1, i, "#a0a0a0"); set(i, i + 1, "#5e5e5e"); }
+  for (const i of [0, 1, 2, 4, 5]) set(i, i, "#c01c1c");
+  for (let i = 0; i <= 5; i++) set(i + 1, i, "#7a0e0e");
+  set(2, 3, "#8e1414"); set(2, 4, "#c01c1c"); set(5, 6, "#8e1414"); set(5, 8, "#c01c1c");   // drips
+  for (const [x, y] of [[7, 13], [8, 12], [9, 11], [10, 10], [11, 9], [12, 8], [13, 7]]) set(x, y, "#3a3a3a");
+  set(9, 12, "#1c1c1c"); set(12, 9, "#1c1c1c");
+  for (const i of [11, 12, 13]) set(i, i, "#4a2a1a");
+  set(14, 14, "#9a9a9a"); set(15, 15, "#5e5e5e");
+  const c = document.createElement("canvas");
+  c.width = c.height = N * 2;
+  const x = c.getContext("2d");
+  const dot = (k, col) => { const [a, b] = k.split(",").map(Number); x.fillStyle = col; x.fillRect(a * 2, b * 2, 2, 2); };
+  // black outline so the sword reads on both the pale sky and the dark stone
+  for (const k of px.keys()) {
+    const [a, b] = k.split(",").map(Number);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!px.has(a + dx + "," + (b + dy))) dot(a + dx + "," + (b + dy), "#000");
+  }
+  for (const [k, col] of px) dot(k, col);
+  const s = document.createElement("style");
+  s.textContent = `html, body, button, button:disabled, .crow, .door, .tile { cursor: url(${c.toDataURL()}) 1 1, auto !important; }`;
+  document.head.appendChild(s);
+}
+buildCursor();
+// Blood drips off the sword cursor every ~0.8 s from one of the two drip spots on the blade.
+(function bloodDrips() {
+  let mx = -1, my = -1;
+  addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") { mx = e.clientX; my = e.clientY; } });
+  document.addEventListener("mouseleave", () => { mx = -1; });
+  (function tick() {
+    if (mx >= 0) {
+      const [ox, oy] = rnd() < 0.5 ? [4, 10] : [10, 18];
+      const d = document.createElement("div");
+      d.className = "drop";
+      d.style.setProperty("--dx", mx + ox + "px");
+      d.style.setProperty("--dy", my + oy + "px");
+      document.body.appendChild(d);
+      setTimeout(() => d.remove(), 1200);
+    }
+    setTimeout(tick, 600 + rnd() * 500);
+  })();
+})();
+// Film grain tile, rendered once instead of an SVG turbulence filter blended over the page every frame.
+function buildGrain() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d");
+  const img = x.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() < 0.5 ? 0 : 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = Math.random() * 255;
+  }
+  x.putImageData(img, 0, 0);
+  document.querySelector(".grain").style.backgroundImage = `url(${c.toDataURL()})`;
+}
+function titleCanvas() {
+  const c = document.createElement("canvas");
+  c.className = "px"; c.width = 96; c.height = 52;
+  const x = c.getContext("2d");
+  x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = "#f4f4f4";
+  x.font = "21px UnifrakturMaguntia, serif"; x.fillText("Nullified", 48, 13, 92);
+  x.font = "22px UnifrakturMaguntia, serif"; x.fillText("Casino", 48, 37);
+  crunch(x, c.width, c.height, 3);
+  return c;
+}
+// The roof is drawn into a canvas ~1/6 of its on-screen width, so it shows chunky pixels.
+async function pixelateRoof() {
+  const svg = document.querySelector(".nave svg.arch");
+  const rect = svg.getBoundingClientRect();
+  const cw = Math.max(1, Math.round(rect.width / 6)), ch = Math.max(1, Math.round(rect.height / 6));
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+  await img.decode();
+  let canvas = document.querySelector(".nave canvas.px");
+  if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "px"; svg.after(canvas); }
+  canvas.width = cw; canvas.height = ch;
+  const x = canvas.getContext("2d");
+  x.drawImage(img, 0, 0, cw, ch);
+  crunch(x, cw, ch, 4);
+  svg.style.display = "none";
+}
+function pixelateTitle() {
+  document.querySelector("#slots .title").firstChild.replaceWith(titleCanvas());
+  $("hubTitle").replaceWith(titleCanvas());
+  $("minesTitle").replaceWith(titleCanvas());
+  $("bjTitle").replaceWith(titleCanvas());
+  $("crashTitle").replaceWith(titleCanvas());
+  $("duelTitle").replaceWith(titleCanvas());
+  $("upgTitle").replaceWith(titleCanvas());
+  $("cofTitle").replaceWith(titleCanvas());
+}
+
+function cellHtml(cell, extra = "") {
+  const sym = SYMBOLS[cell.s];
+  const img = `<img class="spr" src="${SPR[cell.s]}" alt="">`;
+  if (cell.s === "W") return `<div class="cell wild ${cell.sticky ? "sticky" : ""} ${extra}">${img}<span class="tag">Витраж</span><span class="mult">x${cell.m}</span></div>`;
+  if (cell.s === "S") return `<div class="cell scatter ${extra}">${img}<span class="tag">Колокол</span></div>`;
+  return `<div class="cell ${sym.royal ? "royal" : ""} ${extra}">${img}</div>`;
+}
+const SYMBOL_NAMES = { rott: "череп", pug: "мышь", poodle: "свеча", guide: "ключ", bone: "роза", W: "витраж", S: "колокол" };
+function symLabel(s) { return SYMBOL_NAMES[s] || SYMBOLS[s].face; }
+
+let state = { bet: 40, grid: spinGrid(false), busy: false, auto: false, fsLeft: 0, fsWin: 0, sticky: null, speed: 0 };
+const SPEEDS = [1, 0.5, 0.22];          // reel animation time multiplier: normal, fast, turbo
+const SPEED_LABELS = ["▶", "▶▶", "▶▶▶"];
+
+function render(grid) {
+  grid.forEach((col, c) => {
+    reels[c].style.transition = "none";
+    reels[c].style.transform = "translateY(0)";
+    reels[c].innerHTML = col.map((cell) => cellHtml(cell)).join("");
+  });
+}
+function fmt(n) { return Math.round(n).toLocaleString("ru-RU"); }
+function updateHud() {
+  $("bal").textContent = fmt(Wallet.get());
+  showBet("bet", state.bet, state.busy || state.fsLeft > 0);
+  $("betDown").disabled = state.busy || state.fsLeft > 0 || state.bet <= BET_MIN;
+  $("betUp").disabled = state.busy || state.fsLeft > 0 || state.bet >= BET_MAX;
+  $("spin").disabled = state.busy;
+  $("auto").classList.toggle("on", state.auto);
+  $("fsbar").classList.toggle("on", state.fsLeft > 0);
+  $("fsleft").textContent = state.fsLeft;
+  $("fswin").textContent = fmt(state.fsWin);
+  $("backSlots").disabled = state.busy || state.fsLeft > 0 || state.auto;
+  $("hubBal").textContent = fmt(Wallet.get());
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Spin the reels on the click itself, so the trip to the server is hidden inside the spin.
+function preSpin() {
+  reels.forEach((strip, c) => {
+    const table = reelTable(c, state.fsLeft > 0);
+    const cells = Array.from({ length: 12 }, () => makeCell(weighted(table)));
+    strip.style.transition = "none"; strip.style.transform = "";
+    strip.innerHTML = [...cells, ...cells].map((cell) => cellHtml(cell)).join("");   // doubled: the loop has no seam
+    strip.classList.add("prespin");
+  });
+}
+function stopPreSpin() { reels.forEach((strip) => strip.classList.remove("prespin")); }
+async function animate(grid) {
+  const spun = reels[0].classList.contains("prespin");
+  stopPreSpin();
+  const cellPx = reels[0].parentElement.clientHeight / 3;
+  const jobs = grid.map((col, c) => {
+    const strip = reels[c];
+    const filler = [];
+    const n = 14 + c * 5;
+    const table = reelTable(c, state.fsLeft > 0);
+    for (let i = 0; i < n; i++) filler.push(makeCell(weighted(table)));
+    // final cells on top, current cells at the bottom; strip slides down
+    // reels that were already rolling keep showing a blur of random symbols, not the last result
+    const current = spun ? filler.slice(-3) : state.grid[c];
+    strip.style.transition = "none";
+    strip.innerHTML = [...col, ...filler, ...current].map((cell) => cellHtml(cell)).join("");
+    const travel = (n + 3) * cellPx;
+    strip.style.transform = `translateY(${-travel}px)`;
+    strip.getBoundingClientRect();
+    const dur = Math.round((700 + c * 240) * SPEEDS[state.speed]);
+    strip.style.transition = `transform ${dur}ms cubic-bezier(.2,.75,.25,1.05)`;
+    strip.style.transform = "translateY(0)";
+    return sleep(dur + 40).then(() => Sfx.play("tick"));
+  });
+  await Promise.all(jobs);
+  render(grid);
+}
+
+function highlight(res) {
+  const lit = new Set();
+  res.wins.forEach((w) => w.cells.forEach(([c, r]) => lit.add(c + ":" + r)));
+  if (res.scatterWin) res.scatters.forEach(([c, r]) => lit.add(c + ":" + r));
+  reels.forEach((strip, c) => [...strip.children].forEach((el, r) => el.classList.toggle("win", lit.has(c + ":" + r))));
+}
+
+function showModal(id) { $(id).classList.add("on"); return new Promise((res) => { $(id).querySelector("button").onclick = () => { $(id).classList.remove("on"); res(); }; }); }
+
+async function spin() {
+  if (state.busy) return;
+  state.bet = clampBet(state.bet);
+  const free = state.fsLeft > 0;
+  state.busy = true; $("msg").textContent = ""; $("win").textContent = "0";
+  updateHud();
+  // the server charges the bet, draws the grid and pays; free spins and sticky wilds live there too
+  let res;
+  preSpin();
+  try { res = await api("/api/slots/spin", { bet: state.bet }, { keepBalance: true }); }
+  catch (e) { stopPreSpin(); render(state.grid); state.busy = false; state.auto = false; $("msg").textContent = e.message; updateHud(); return; }
+  if (!free) Wallet.set(Wallet.get() - res.bet);
+  state.fsLeft = res.fsLeft;
+  const bet = res.bet, grid = res.grid;
+  await animate(grid);
+  state.grid = grid;
+  highlight(res);
+  Wallet.set(res.balance);
+  if (res.total > 0) Sfx.play(res.total >= bet * 10 ? "big" : "win");
+  $("win").textContent = fmt(res.total);
+  state.fsWin = res.fsWin;
+  if (res.total > 0) {
+    const best = res.wins.sort((a, b) => b.amount - a.amount)[0];
+    $("msg").textContent = best ? `Линия ${best.line + 1}: ${best.count} × ${symLabel(best.sym)}${best.mult > 1 ? " · x" + best.mult : ""} — +${fmt(res.total)}` : `Колокола: +${fmt(res.total)}`;
+  }
+
+  if (res.fsAwarded) {
+    const n = res.fsAwarded;
+    $("fsTitle").textContent = "Бьёт полночь";
+    $("fsBig").textContent = n + " фриспинов";
+    $("fsText").textContent = "До конца полуночи витражи остаются на своих местах.";
+    Sfx.play("big");
+    state.busy = false; updateHud();
+    await showModal("fsModal");
+  } else if (res.fsEnded) {
+    $("fsTitle").textContent = "Рассвет";
+    $("fsBig").textContent = "+" + fmt(state.fsWin);
+    $("fsText").textContent = "Полночь прошла. Выигрыш за фриспины уже на балансе.";
+    state.busy = false; updateHud();
+    await showModal("fsModal");
+  }
+  state.busy = false;
+  updateHud();
+  if (state.fsLeft > 0 || state.auto) {
+    await sleep((state.fsLeft > 0 ? 600 : 900) * Math.max(SPEEDS[state.speed], 0.35));
+    if (state.fsLeft > 0 || state.auto) spin();
+  }
+}
+
+// every enabled button blips; the ♪ button toggles sound
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b && !b.disabled && b.id !== "sound") Sfx.play(b.classList.contains("back") ? "back" : "click");
+}, true);
+// the bell button (top-right) opens the volume panel; music starts on the first click or key press anywhere
+for (const [id, key] of [["volMusic", "music"], ["volSfx", "sfx"]]) {
+  const input = $(id), label = $(id + "Val");
+  const sync = () => { label.textContent = input.value + "%"; $("sound").classList.toggle("off", !Sfx.volumes.music && !Sfx.volumes.sfx); };
+  input.value = Math.round(Sfx.volumes[key] * 100);
+  input.oninput = () => { Sfx.setVolume(key, input.value / 100); sync(); };
+  if (key === "sfx") input.onchange = () => Sfx.play("click");
+  sync();
+}
+$("sound").onclick = () => { const open = $("volpanel").classList.toggle("on"); $("sound").classList.toggle("open", open); Sfx.play("click"); };
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest("#volpanel, #sound")) { $("volpanel").classList.remove("on"); $("sound").classList.remove("open"); }
+});
+const startMusicOnce = () => Sfx.startMusic();
+addEventListener("pointerdown", startMusicOnce, { once: true });
+addEventListener("keydown", startMusicOnce, { once: true });
+$("spin").onclick = () => spin();
+$("auto").onclick = () => { state.auto = !state.auto; updateHud(); if (state.auto && !state.busy) spin(); };
+bindBet("bet", "betDown", "betUp", state, updateHud);
+$("info").onclick = () => showModal("ptModal");
+$("speed").onclick = () => { state.speed = (state.speed + 1) % SPEEDS.length; $("speed").textContent = SPEED_LABELS[state.speed]; };
+document.addEventListener("keydown", (e) => { if (e.code === "Space" && view === "slots" && !e.target.closest("input")) { e.preventDefault(); spin(); } });
+
+/* ---------- screens ---------- */
+let view = "hub";
+function show(next) {
+  view = next;
+  pollNow();
+  for (const id of ["hub", "slots", "mines", "bj", "crash", "duel", "upg", "cof"]) $(id).classList.toggle("on", id === next);
+  if (next === "duel") renderRooms();
+  if (next === "upg") renderUpg();
+  if (next === "cof") renderCof();
+  if (next === "slots") {
+    const svg = document.querySelector(".nave svg.arch");
+    svg.style.display = "";
+    pixelateRoof().catch(() => {});
+  }
+  updateHud();
+  updateMines();
+  renderBJ();
+}
+$("doorSlots").onclick = () => show("slots");
+$("doorBj").onclick = () => show("bj");
+$("backBj").onclick = () => show("hub");
+$("doorMines").onclick = () => show("mines");
+$("backSlots").onclick = () => show("hub");
+$("backMines").onclick = () => show("hub");
+// Hub carousel: new games are just more .door buttons inside #doors. The arrows shift the
+// window of DOORS_SHOWN doors by one game, wrapping around in a circle.
+const DOORS_SHOWN = 3;
+let doorStart = 0;
+function renderDoors(dir = 0) {
+  const doors = [...$("doors").children], n = doors.length;
+  doorStart = ((doorStart % n) + n) % n;
+  doors.forEach((d, i) => {
+    const pos = (i - doorStart + n) % n;
+    d.style.display = pos < DOORS_SHOWN ? "" : "none";
+    d.style.order = pos;
+  });
+  $("doorsPrev").disabled = $("doorsNext").disabled = n <= DOORS_SHOWN;
+  if (dir) {
+    const el = $("doors");
+    el.classList.remove("turn"); el.style.setProperty("--from", dir * 40 + "px");
+    void el.offsetWidth; el.classList.add("turn");
+  }
+}
+$("doorsPrev").onclick = () => { doorStart--; renderDoors(-1); };
+$("doorsNext").onclick = () => { doorStart++; renderDoors(1); };
+renderDoors();
+// Deposit: the server opens a huEVO payment, the player confirms it in the huEVO window, then the
+// server checks the payment and credits the coins. Withdraw: the server pays out from the app wallet.
+// both ways the casino keeps a 5% fee (the server applies it; this only shows it)
+const CASH_FEE = 0.05;
+const afterFee = (amount) => Math.floor(amount * (1 - CASH_FEE));
+let cashMode = "deposit";
+function cashHint() {
+  const amount = Number($("cashAmount").value) || 0;
+  const ask = cashMode === "deposit" ? "Сколько монэток huEVO перевести в казино?" : `На балансе ${fmt(Wallet.get())}. Сколько вывести на твой счёт huEVO?`;
+  const net = cashMode === "deposit" ? `на баланс придёт ${fmt(afterFee(amount))}` : `на huEVO придёт ${fmt(afterFee(amount))}`;
+  $("cashText").innerHTML = `${ask}<br><small>Комиссия 5%: ${net}</small>`;
+}
+function openCash(mode) {
+  cashMode = mode;
+  $("cashTitle").textContent = mode === "deposit" ? "Пополнить баланс" : "Вывести на huEVO";
+  $("cashOk").textContent = mode === "deposit" ? "Пополнить" : "Вывести";
+  $("cashAmount").value = mode === "deposit" ? "1000" : String(Wallet.get());
+  cashHint();
+  $("cashModal").classList.add("on");
+  $("cashAmount").focus();
+}
+$("cashAmount").addEventListener("input", () => { $("cashAmount").value = $("cashAmount").value.replace(/\D/g, "").slice(0, 7); cashHint(); });
+$("cashCancel").onclick = () => $("cashModal").classList.remove("on");
+$("cashOk").onclick = async () => {
+  const amount = Number($("cashAmount").value);
+  if (!amount) return;
+  $("cashOk").disabled = true;
+  try {
+    if (cashMode === "withdraw") {
+      const r = await api("/api/withdraw", { amount });
+      toast(`Выведено ${fmt(r.paid || afterFee(amount))} на huEVO (комиссия 5%)`);
+    } else {
+      const { intent_id } = await api("/api/deposit", { amount });
+      $("cashModal").classList.remove("on");
+      if (!window.huevo) throw new Error("Окно оплаты huEVO недоступно");
+      const res = await huevo.confirmPayment(intent_id);
+      if (res.status !== "succeeded") throw new Error(res.status === "cancelled" ? "Оплата отменена" : "Оплата не прошла");
+      // huEVO also calls the server back; checking here makes the coins appear right away
+      let credited = 0;
+      for (let i = 0; i < 5 && !credited; i++) { const r = await api("/api/deposit/check", { intent_id }); credited = r.credited || (r.status === "succeeded" ? -1 : 0); if (!credited) await sleep(1200); }
+      toast(`Пополнено на ${fmt(credited > 0 ? credited : afterFee(amount))} (комиссия 5%)${res.test ? " · тест" : ""}`);
+    }
+    $("cashModal").classList.remove("on");
+  } catch (e) { toast(e.message, true); }
+  $("cashOk").disabled = false;
+};
+$("depositBtn").onclick = () => openCash("deposit");
+$("withdrawBtn").onclick = () => openCash("withdraw");
+
+/* ---------- mines ---------- */
+// 25 slabs, N of them hide a bloody sword. Each safe slab raises the multiplier;
+// the fair multiplier for k safe picks is prod (25-i)/(25-N-i), minus a 10% house edge.
+const MINE_TILES = 25;
+const MINE_EDGE = 0.90;
+const mines = { bet: 40, count: 3, active: false, knives: new Set(), opened: new Set(), boom: -1, revealed: false };
+
+function minesMultiplier(picks, count) {
+  if (picks === 0) return 1;
+  let m = MINE_EDGE;
+  for (let i = 0; i < picks; i++) m *= (MINE_TILES - i) / (MINE_TILES - count - i);
+  return m;
+}
+const fmtMult = (m) => "x" + (m < 10 ? m.toFixed(2) : m < 100 ? m.toFixed(1) : Math.round(m));
+
+function buildMinesGrid() {
+  const grid = $("mgrid");
+  grid.innerHTML = "";
+  for (let i = 0; i < MINE_TILES; i++) {
+    const b = document.createElement("button");
+    b.className = "tile closed";
+    b.innerHTML = `<img src="${SPR.cross}" alt="">`;
+    b.onclick = () => openTile(i);
+    grid.appendChild(b);
+  }
+}
+function drawTile(i) {
+  const el = $("mgrid").children[i];
+  const isKnife = mines.knives.has(i);
+  const open = mines.opened.has(i) || (mines.revealed && (isKnife || !mines.active));
+  el.className = "tile";
+  if (!open) { el.classList.add("closed"); el.innerHTML = `<img src="${SPR.cross}" alt="">`; }
+  else if (isKnife) { el.classList.add("open"); if (i === mines.boom) el.classList.add("boom"); else if (mines.revealed) el.classList.add("dim"); el.innerHTML = `<img src="${SPR.knife}" alt="">`; }
+  else if (!mines.opened.has(i) && !mines.knives.size) { el.classList.add("closed", "dim"); el.innerHTML = `<img src="${SPR.cross}" alt="">`; }
+  else { el.classList.add("open", "safe"); if (!mines.opened.has(i)) el.classList.add("dim"); el.innerHTML = `<img src="${SPR.poodle}" alt="">`; }
+  el.disabled = !mines.active || mines.opened.has(i);
+}
+function updateMines() {
+  if (!$("mgrid").children.length) return;
+  $("mBal").textContent = fmt(Wallet.get());
+  showBet("mBet", mines.bet, mines.active);
+  $("mCount").textContent = mines.count;
+  for (const id of ["mBetDown", "mBetUp", "mCountDown", "mCountUp", "backMines"]) $(id).disabled = mines.active;
+  $("mBetDown").disabled ||= mines.bet <= BET_MIN;
+  $("mBetUp").disabled ||= mines.bet >= BET_MAX;
+  $("mCountDown").disabled ||= mines.count === 1;
+  $("mCountUp").disabled ||= mines.count === 24;
+  const picks = mines.opened.size;
+  const go = $("mGo");
+  if (mines.active) {
+    const cash = mines.bet * minesMultiplier(picks, mines.count);
+    go.textContent = picks ? `Забрать ${fmt(cash)}` : "Выбери плиту";
+    go.classList.toggle("cash", picks > 0);
+    go.disabled = picks === 0;
+    $("mNext").textContent = `Сейчас ${fmtMult(minesMultiplier(picks, mines.count))} · следующая ${fmtMult(minesMultiplier(picks + 1, mines.count))}`;
+  } else {
+    go.textContent = "Играть"; go.classList.remove("cash"); go.disabled = false;
+    if (!mines.revealed) $("mNext").textContent = `Первая плита ${fmtMult(minesMultiplier(1, mines.count))}`;
+  }
+  for (let i = 0; i < MINE_TILES; i++) drawTile(i);
+}
+// The server hides the swords; the page only learns where they were when the round ends.
+async function startMines() {
+  if (mines.pending) return;
+  mines.bet = clampBet(mines.bet);
+  mines.pending = true;
+  try { await api("/api/mines/start", { bet: mines.bet, count: mines.count }); }
+  catch (e) { mines.pending = false; $("mNext").textContent = e.message; return; }
+  mines.pending = false;
+  mines.knives = new Set(); mines.opened = new Set(); mines.boom = -1; mines.revealed = false; mines.active = true;
+  updateMines(); updateHud();
+}
+function endMines(r) {
+  mines.knives = new Set(r.swords || []); mines.opened = new Set(r.opened || []);
+  mines.active = false; mines.revealed = true;
+}
+async function cashOut() {
+  if (mines.pending) return;
+  mines.pending = true;
+  let r;
+  try { r = await api("/api/mines/cashout", {}); } catch (e) { mines.pending = false; $("mNext").textContent = e.message; return; }
+  mines.pending = false;
+  showMinesWin(r);
+}
+function showMinesWin(r) {
+  endMines(r);
+  Sfx.play("coin");
+  updateMines(); updateHud();
+  $("mNext").textContent = `Забрал ${fmt(r.win)} (${fmtMult(r.mult)})`;
+}
+// A click lights the slab at once and joins a queue, so several slabs can be picked in a row while the
+// server answers; they are opened one by one, and the rest are dropped if a sword turns up.
+mines.queue = [];
+function markPending() {
+  [...$("mgrid").children].forEach((el, i) => el.classList.toggle("pending", mines.queue.includes(i)));
+}
+function openTile(i) {
+  if (!mines.active || mines.opened.has(i) || mines.queue.includes(i)) return;
+  mines.queue.push(i);
+  Sfx.play("tick");
+  markPending();
+  if (!mines.pending) drainTiles();
+}
+async function drainTiles() {
+  mines.pending = true;
+  while (mines.queue.length && mines.active) {
+    const i = mines.queue[0];
+    let r;
+    try { r = await api("/api/mines/open", { i }); }
+    catch (e) { mines.queue = []; $("mNext").textContent = e.message; break; }
+    mines.queue.shift();
+    if (r.boom !== undefined) {
+      mines.queue = [];
+      endMines(r); mines.boom = r.boom;
+      Sfx.play("boom");
+      updateMines(); updateHud();
+      $("mNext").textContent = "Меч! Ставка сгорела";
+      break;
+    }
+    if (r.cashed) { mines.queue = []; Sfx.play("safe"); mines.pending = false; return showMinesWin(r); }   // every safe slab opened: paid out
+    mines.opened = new Set(r.opened);
+    Sfx.play("safe");
+    updateMines(); markPending();
+  }
+  mines.pending = false;
+  markPending();
+}
+$("mGo").onclick = () => (mines.active ? cashOut() : startMines());
+bindBet("mBet", "mBetDown", "mBetUp", mines, updateMines);
+$("mCountDown").onclick = () => { mines.count = Math.max(1, mines.count - 1); mines.revealed = false; updateMines(); };
+$("mCountUp").onclick = () => { mines.count = Math.min(24, mines.count + 1); mines.revealed = false; updateMines(); };
+
+/* ---------- blackjack ---------- */
+// 6-deck shoe, dealer stands on soft 17, blackjack pays 6:5, double on any first two cards (also after a split).
+// Split any pair of equal value up to 4 hands; split aces get one card each and can't be re-split. No insurance.
+const SUITS = [["♠", false], ["♥", true], ["♦", true], ["♣", false]];
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const MAX_HANDS = 4;
+const bj = { bet: 40, shoe: [], hands: [], active: 0, dealer: [], phase: "idle", outcome: "", outcomeClass: "" };
+const newHand = (cards, stake, fromSplit = false) => ({ cards, stake, fromSplit, splitAces: false, done: false, result: "" });
+
+// The shoe and every card are dealt by the server; the hole card stays there until the dealer plays.
+function handValue(hand) {
+  let total = 0, aces = 0;
+  for (const c of hand) {
+    if (c.r === "A") { aces++; total += 11; }
+    else total += ["J", "Q", "K"].includes(c.r) ? 10 : Number(c.r);
+  }
+  while (total > 21 && aces) { total -= 10; aces--; }
+  return { total, soft: aces > 0 };
+}
+const isBlackjack = (hand) => hand.length === 2 && handValue(hand).total === 21;
+
+function cardHtml(c, hidden, fresh) {
+  if (hidden || !c) return `<div class="pcard back ${fresh ? "new" : ""}"></div>`;
+  return `<div class="pcard ${c.red ? "red" : ""} ${fresh ? "new" : ""}"><span class="r">${c.r}</span><span class="s">${c.s}</span><span class="rb">${c.r}</span></div>`;
+}
+const cardPoints = (c) => (c.r === "A" ? 11 : ["10", "J", "Q", "K"].includes(c.r) ? 10 : Number(c.r));
+const activeHand = () => bj.hands[bj.active];
+function canSplit(h) {
+  return bj.phase === "player" && h && !h.done && h.cards.length === 2 && !h.splitAces && bj.hands.length < MAX_HANDS &&
+    cardPoints(h.cards[0]) === cardPoints(h.cards[1]) && Wallet.get() >= h.stake;
+}
+const canDouble = (h) => bj.phase === "player" && h && !h.done && h.cards.length === 2 && !h.splitAces && Wallet.get() >= h.stake;
+
+// Only cards that weren't on the table at the previous render get the deal animation.
+const bjShown = { hands: [], dealer: 0, hole: true };
+function renderBJ() {
+  const hideHole = bj.phase === "player";
+  const holeFlipped = bjShown.hole && !hideHole;
+  $("bjDealer").innerHTML = bj.dealer.map((c, i) => cardHtml(c, hideHole && i === 1, i >= bjShown.dealer || (i === 1 && holeFlipped))).join("");
+  const multi = bj.hands.length > 1;
+  const mark = { win: " ✓", bj: " ✓", push: " =", lose: " ✗" };
+  $("bjPlayer").innerHTML = bj.hands.map((h, hi) => {
+    const cards = h.cards.map((c, i) => cardHtml(c, false, i >= (bjShown.hands[hi] ?? 0))).join("");
+    const label = `${multi ? "Рука " + (hi + 1) : "Ты"} · ${h.total ?? handValue(h.cards).total}${h.result ? mark[h.result] : ""}`;
+    const active = multi && bj.phase === "player" && hi === bj.active;
+    return `<div class="hwrap ${active ? "active" : ""}"><div class="hand">${cards}</div><div class="hand-label">${label}</div></div>`;
+  }).join("") || `<div class="hwrap"><div class="hand"></div><div class="hand-label">Ты</div></div>`;
+  bjShown.hands = bj.hands.map((h) => h.cards.length); bjShown.dealer = bj.dealer.length; bjShown.hole = hideHole || !bj.dealer.length;
+  document.querySelector("#bj .table").classList.toggle("many", bj.hands.length > 2);
+  const dv = bj.dealerTotal ?? 0;
+  $("bjDealerLabel").textContent = bj.dealer.length ? `Дилер · ${dv}` : "Дилер";
+  $("bjBal").textContent = fmt(Wallet.get());
+  const staked = bj.hands.reduce((a, h) => a + h.stake, 0);
+  const inHand = bj.phase === "player" || bj.phase === "dealer";
+  showBet("bjBet", staked && inHand ? staked : bj.bet, inHand);
+  const playing = bj.phase === "player" && !!activeHand() && !activeHand().done && !bj.pending;
+  const busy = bj.phase === "player" || bj.phase === "dealer" || bj.pending;
+  $("bjDeal").disabled = busy;
+  $("bjHit").disabled = !playing;
+  $("bjStand").disabled = !playing;
+  $("bjDouble").disabled = !canDouble(activeHand());
+  $("bjSplit").disabled = !canSplit(activeHand());
+  $("bjBetDown").disabled = busy || bj.bet <= BET_MIN;
+  $("bjBetUp").disabled = busy || bj.bet >= BET_MAX;
+  $("backBj").disabled = busy;
+  $("bjOut").textContent = bj.outcome;
+  $("bjOut").className = "outcome " + bj.outcomeClass;
+}
+
+// Apply a table state from the server; cards that weren't there before animate in (renderBJ).
+function applyBJ(s) {
+  const before = bj.hands.reduce((a, h) => a + h.cards.length, 0) + bj.dealer.filter(Boolean).length;
+  bj.hands = s.hands; bj.dealer = s.dealer; bj.active = s.active; bj.dealerTotal = s.dealerTotal;
+  bj.phase = s.phase === "done" ? "done" : "player";
+  const after = bj.hands.reduce((a, h) => a + h.cards.length, 0) + bj.dealer.filter(Boolean).length;
+  if (after > before) Sfx.play("card");
+  if (s.phase === "done") finishRound(s.outcome);
+  else renderBJ();
+}
+function finishRound(o) {
+  const paid = o.paid, net = o.net;
+  if (net !== 0) Sfx.play(net > 0 ? "win" : "lose");
+  if (bj.hands.length === 1) {
+    const r = bj.hands[0].result;
+    bj.outcome = { bj: `Blackjack! +${fmt(paid)}`, win: `Победа! +${fmt(paid)}`, push: "Ничья — ставка возвращена", lose: "Дилер забрал ставку" }[r];
+    bj.outcomeClass = r === "lose" ? "lose" : r === "push" ? "" : "win";
+  } else {
+    bj.outcome = net > 0 ? `Итог: +${fmt(net)}` : net < 0 ? `Итог: −${fmt(-net)}` : "Итог: в ноль";
+    bj.outcomeClass = net > 0 ? "win" : net < 0 ? "lose" : "";
+  }
+  bj.phase = "done";
+  renderBJ(); updateHud(); updateMines();
+}
+async function bjCall(path, body) {
+  if (bj.pending) return;
+  bj.pending = true; renderBJ();
+  try { const s = await api(path, body); bj.pending = false; applyBJ(s); }
+  catch (e) { bj.pending = false; bj.outcome = e.message; bj.outcomeClass = "lose"; renderBJ(); }
+}
+function dealBJ() {
+  bj.bet = clampBet(bj.bet);
+  bj.outcome = ""; bj.outcomeClass = "";
+  bj.hands = []; bj.dealer = []; bjShown.hands = []; bjShown.dealer = 0;
+  bjCall("/api/bj/deal", { bet: bj.bet });
+}
+const hitBJ = () => bjCall("/api/bj/action", { action: "hit" });
+const standBJ = () => bjCall("/api/bj/action", { action: "stand" });
+const doubleBJ = () => canDouble(activeHand()) && bjCall("/api/bj/action", { action: "double" });
+const splitBJ = () => canSplit(activeHand()) && bjCall("/api/bj/action", { action: "split" });
+$("bjDeal").onclick = dealBJ;
+$("bjHit").onclick = hitBJ;
+$("bjStand").onclick = standBJ;
+$("bjDouble").onclick = doubleBJ;
+$("bjSplit").onclick = splitBJ;
+bindBet("bjBet", "bjBetDown", "bjBetUp", bj, renderBJ);
+
+/* ---------- crash ---------- */
+// A bat climbs while the multiplier grows as e^(k·t) and drops at a random crash point.
+// P(point >= x) = 0.90 / x, so every cash-out strategy returns ~90%.
+const CRASH_EDGE = 0.90, CRASH_K = 0.14, CRASH_VIEW_DELAY = 700;
+const CRASH_AUTO = [0, 1.2, 1.5, 2, 3, 5, 10, 25, 100];
+const CW = 192, CH = 108;
+const BAT = {
+  up:   ["#.........#", "##.......##", "###.....###", ".####.####.", "...#r#r#...", "....###....", "....#.#...."],
+  down: ["...........", "....#.#....", "...#r#r#...", ".#########.", "###.....###", "##.......##", "#.........#"],
+};
+const CRASH_BET_SEC = 6;
+const crash = { bet: 40, auto: 0, phase: "bet", roundId: 0, sec: 0, point: 1, m: 1, el: 0, fallAt: 0, hist: [], players: [],
+  queued: false, offset: 0, betEnds: 0, flyStart: 0 };
+
+/* Shared rounds run on the game server: it draws each crash point in secret and reveals it only when
+   the bat falls, takes the bets and pays the cash-outs. The page times the flight from the server clock. */
+const myCrash = () => crash.players.find((p) => p.you);
+function crashOnState(m, localAt) {
+  crash.offset = m.now - (localAt || Date.now());
+  const prev = crash.phase, newRound = m.id !== crash.roundId, meBefore = myCrash();
+  Object.assign(crash, { roundId: m.id, phase: m.phase, betEnds: m.betEnds, flyStart: m.flyStart, hist: m.hist || [], queued: !!m.queued });
+  if (m.point) crash.point = m.point;
+  crash.players = (m.players || []).map((p) => ({ ...p, you: !!Net.user && p.id === Net.user.id }));
+  // a cash-out this page just made is not undone by a poll that left before it
+  if (meBefore && meBefore.cashed && myCrash() && !myCrash().cashed && !newRound) myCrash().cashed = meBefore.cashed;
+  const me = myCrash();
+  if (newRound) {
+    if (me) crashMsg("Ставка принята. Забери выигрыш, пока мышь летит");
+    else if (!crash.queued) crashMsg("Делайте ставки");
+  }
+  if (me && me.cashed && !(meBefore && meBefore.cashed)) {
+    crashMsg(`Забрал ${fmt(Math.floor(me.bet * me.cashed))} на x${me.cashed.toFixed(2)}`);
+    Sfx.play("coin");
+  }
+  if (crash.phase === "fly" && prev === "bet") crashLaunchSound();
+  if (crash.phase === "crashed" && prev !== "crashed") {
+    crash.fallAt = performance.now();
+    if (view === "crash" || (me && !me.cashed)) Sfx.play("boom");
+    crashMsg(me && !me.cashed ? `Мышь сбита на x${crash.point.toFixed(2)}. Ставка сгорела` : `Мышь сбита на x${crash.point.toFixed(2)}`);
+  }
+}
+function renderPlayers() {
+  const ps = crash.players;
+  $("cCount").textContent = ps.length;
+  $("cTotal").textContent = fmt(ps.reduce((a, p) => a + p.bet, 0));
+  const over = crash.phase === "crashed";
+  $("cList").innerHTML = ps.length ? ps.map((p) => {
+    const state = p.cashed ? "won" : over ? "lost" : "";
+    const status = p.cashed ? `x${p.cashed.toFixed(2)} · +${fmt(Math.floor(p.bet * p.cashed))}` : over ? "сбит" : crash.phase === "bet" ? "ставка" : "в полёте";
+    return `<div class="prow ${p.you ? "you" : ""} ${state}"><span class="pn">${escapeHtml(p.name)}</span>` +
+      `<span class="pb">${fmt(p.bet)}</span><span class="ps">${status}</span></div>`;
+  }).join("") : `<div class="prow"><span class="ps">Ждём ставок</span></div>`;
+}
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Site-wide wins ticker: the server sends every player's real wins. */
+const tickerWins = [];
+function pushWin(w) {
+  const you = !!Net.user && w.name === Net.user.name;
+  tickerWins.unshift({ ...w, you, fresh: true });
+  tickerWins.length = Math.min(tickerWins.length, 20);
+  $("ticker").innerHTML = tickerWins.map((t) =>
+    `<span class="${t.you ? "you" : ""} ${t.fresh ? "new" : ""}">${escapeHtml(t.name)} · <i>${t.game}</i> <b>+${fmt(t.amount)}</b>${t.mult ? " x" + t.mult.toFixed(2) : ""}</span>`).join("");
+  tickerWins.forEach((t) => { t.fresh = false; });
+}
+const crashMult = (sec) => Math.exp(CRASH_K * sec);
+
+function drawBat(x, cx, cy, rows, flip, s = 2) {
+  const left = Math.round(cx - rows[0].length * s / 2), top = Math.round(cy - rows.length * s / 2);
+  rows.forEach((row, ry) => [...row].forEach((ch, i) => {
+    if (ch === ".") return;
+    x.fillStyle = ch === "r" ? "#c01c1c" : "#060606";
+    x.fillRect(left + i * s, top + (flip ? rows.length - 1 - ry : ry) * s, s, s);
+  }));
+}
+// Camera follows the bat: it rises off the cathedral roof to mid-screen, then stays there while
+// the world scrolls down past it. Climb speed grows with the multiplier.
+const crashAlt = (sec) => 18 * (Math.exp(CRASH_K * sec) - 1) / CRASH_K;
+const hash = (i) => { const v = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
+const SPIRES = [[14, 20], [38, 12], [62, 34], [96, 6], [130, 34], [154, 12], [178, 20]];
+function drawCrash(now) {
+  const x = $("crashCanvas").getContext("2d");
+  const sec = crash.sec, m = crashMult(sec), flying = crash.phase === "fly", dead = crash.phase === "crashed";
+  const alt = crash.phase === "bet" ? 0 : crashAlt(sec);
+  const GROUND = CH - 10, BX = Math.round(CW / 2), LOCK = Math.round(CH * 0.52);
+  const cam = Math.max(0, alt - (GROUND - 12 - LOCK));
+  const sy = (a, depth = 1) => GROUND - (a - cam * depth);
+
+  // sky gets darker the higher the bat goes
+  const night = Math.min(1, cam / 700);
+  const top = Math.round(150 - 125 * night), bot = Math.round(70 - 50 * night);
+  const sky = x.createLinearGradient(0, 0, 0, CH);
+  sky.addColorStop(0, `rgb(${top},${top},${top})`); sky.addColorStop(1, `rgb(${bot},${bot},${bot})`);
+  x.fillStyle = sky; x.fillRect(0, 0, CW, CH);
+
+  // far layer: stars and moon scroll slowly
+  for (let i = Math.floor((cam * 0.3 - 20) / 12); i < (cam * 0.3 + CH) / 12; i++) {
+    const a = i * 12 + hash(i) * 12, y = Math.round(sy(a, 0.3));
+    if (y < 0 || y > CH) continue;
+    x.fillStyle = `rgba(255,255,255,${0.15 + 0.6 * night * hash(i * 3)})`;
+    x.fillRect(Math.floor(hash(i * 7) * CW), y, 1, 1);
+  }
+  const moonY = Math.round(18 + cam * 0.06);
+  if (moonY < CH + 12) {
+    x.fillStyle = "#e2e2e2"; x.beginPath(); x.arc(CW - 26, moonY, 9, 0, Math.PI * 2); x.fill();
+    x.fillStyle = "#b4b4b4"; x.fillRect(CW - 30, moonY - 3, 3, 2); x.fillRect(CW - 23, moonY + 3, 2, 2);
+  }
+
+  // near layer: fog clouds pass by at full speed and drift sideways in the wind
+  for (let i = Math.max(0, Math.floor((cam - 40) / 30)); i < (cam + CH) / 30 + 1; i++) {
+    const a = 34 + i * 30 + hash(i * 5) * 12, y = Math.round(sy(a));
+    if (y < -8 || y > CH + 8) continue;
+    const w = 16 + Math.round(hash(i * 11) * 22);
+    const cx = Math.round(((hash(i * 3) * (CW + 60) - sec * (6 + hash(i) * 10)) % (CW + 60) + CW + 60) % (CW + 60) - 30);
+    x.fillStyle = `rgba(225,225,225,${0.18 + hash(i * 13) * 0.2})`;
+    x.fillRect(cx + Math.round(w * 0.2), y - 2, Math.round(w * 0.55), 2);
+    x.fillRect(cx, y, w, 3);
+    x.fillRect(cx + Math.round(w * 0.1), y + 3, Math.round(w * 0.75), 2);
+  }
+
+  // speed streaks once the climb gets fast
+  if (flying && m > 1.25) {
+    const n = Math.min(14, Math.floor(m * 2.5)), len = Math.min(28, 3 + m * 3);
+    x.fillStyle = "rgba(255,255,255,.22)";
+    for (let k = 0; k < n; k++) {
+      const y = ((now * 0.06 * m * (0.7 + hash(k) * 0.6) + hash(k * 9) * CH) % (CH + len)) - len;
+      x.fillRect(Math.floor(hash(k * 17) * CW), Math.round(y), 1, Math.round(len));
+    }
+  }
+
+  // the cathedral the bat takes off from, sinking out of view
+  const gy = Math.round(sy(0));
+  if (gy - 50 < CH) {
+    x.fillStyle = "#070707";
+    x.fillRect(0, gy, CW, CH);
+    for (const [sx, h] of SPIRES) for (let r = 0; r < h; r++) {
+      const w = Math.max(1, Math.round((r / h) * 9));
+      x.fillRect(sx - w, gy - h + r, w * 2 + 1, 1);
+    }
+    x.fillStyle = "#7a7a7a";
+    for (const [sx, h] of SPIRES) if (h > 20) x.fillRect(sx, gy - Math.round(h * 0.35), 1, 3);
+  }
+
+  // trail of the last ~1.5 s of flight
+  const by = Math.round(sy(alt)) - 10;
+  if (crash.phase !== "bet") {
+    for (let s = Math.max(0, sec - 1.5); s < sec; s += 0.015) {
+      const age = (sec - s) / 1.5;
+      x.fillStyle = dead ? `rgba(210,60,60,${0.7 * (1 - age)})` : `rgba(255,255,255,${0.6 * (1 - age)})`;
+      x.fillRect(Math.round(BX - (sec - s) * 40), Math.round(sy(crashAlt(s))) - 10, 2, 2);
+    }
+  }
+
+  // spotlight on the bat: everything else is dimmed
+  const spot = x.createRadialGradient(BX, by, 8, BX, by, 90);
+  spot.addColorStop(0, "rgba(0,0,0,0)"); spot.addColorStop(1, "rgba(0,0,0,.6)");
+  x.fillStyle = spot; x.fillRect(0, 0, CW, CH);
+  const glow = x.createRadialGradient(BX, by, 2, BX, by, 26);
+  glow.addColorStop(0, dead ? "rgba(220,60,60,.35)" : "rgba(255,255,255,.3)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = glow; x.fillRect(BX - 26, by - 26, 52, 52);
+
+  if (flying) drawBat(x, BX, by + Math.round(Math.sin(now / 160) * 1.5), now % 240 < 120 ? BAT.up : BAT.down, false, 3);
+  else if (dead) {
+    const t = (now - crash.fallAt) / 1000;
+    const y = by + 110 * t * t;
+    if (y < CH + 24) drawBat(x, BX + 18 * t, y, BAT.up, true, 3);
+    if (t < 0.6) { x.fillStyle = `rgba(170,20,20,${0.35 * (1 - t / 0.6)})`; x.fillRect(0, 0, CW, CH); }
+  } else drawBat(x, BX, by, BAT.down, false, 3);
+}
+const myLive = () => { const me = myCrash(); return !!me && !me.cashed && crash.phase !== "crashed"; };
+function renderCrash() {
+  const me = myCrash(), live = myLive();
+  $("cBal").textContent = fmt(Wallet.get());
+  showBet("cBet", crash.bet, live || crash.queued);
+  $("cAuto").textContent = CRASH_AUTO[crash.auto] ? "x" + CRASH_AUTO[crash.auto] : "Выкл";
+  const lock = live || crash.queued;
+  for (const id of ["cBetDown", "cBetUp", "cAutoDown", "cAutoUp"]) $(id).disabled = lock;
+  $("backCrash").disabled = false;      // the round keeps going on the server; auto cash-out still works
+  $("cBetDown").disabled ||= crash.bet <= BET_MIN;
+  $("cBetUp").disabled ||= crash.bet >= BET_MAX;
+  $("cAutoDown").disabled ||= crash.auto === 0;
+  $("cAutoUp").disabled ||= crash.auto === CRASH_AUTO.length - 1;
+  const go = $("cGo");
+  const cashable = live && crash.phase === "fly";
+  go.classList.toggle("cash", cashable);
+  go.disabled = (crash.phase === "bet" && !!me) || (!!me && me.cashed && crash.phase === "fly") || !Net.live || !!crash.pending;
+  go.textContent = cashable ? `Забрать ${fmt(Math.floor(me.bet * crash.m))}`
+    : crash.phase === "bet" ? (me ? "Ставка принята" : `Поставить ${fmt(clampBet(crash.bet))}`)
+    : me && me.cashed && crash.phase === "fly" ? "Забрано"
+    : crash.queued ? "Отменить ставку" : "Ставка на следующий";
+  const mult = $("crashMult");
+  mult.textContent = crash.phase === "bet" ? `Старт ${Math.max(0, CRASH_BET_SEC - crash.el).toFixed(1)}`
+    : "x" + (crash.phase === "crashed" ? crash.point : Math.floor(crash.m * 100) / 100).toFixed(2);
+  mult.classList.toggle("boom", crash.phase === "crashed");
+  $("crashHist").innerHTML = crash.hist.map((p) => `<span class="${p >= 2 ? "hi" : p < 1.2 ? "lo" : ""}">x${p.toFixed(2)}</span>`).join("");
+}
+function crashMsg(text) { $("cNext").textContent = text; }
+function crashLaunchSound() {
+  if (view !== "crash" || crash.launched === crash.roundId) return;
+  crash.launched = crash.roundId;
+  Sfx.play("launch");
+}
+// Local clock for the animation, corrected by the server's clock offset.
+function crashTick() {
+  const now = Date.now() + crash.offset;
+  // the bets close on the clock; the next poll confirms the flight
+  if (crash.phase === "bet" && crash.betEnds && now >= crash.betEnds) {
+    crash.phase = "fly";
+    crashLaunchSound();
+  }
+  if (crash.phase === "bet") { crash.el = CRASH_BET_SEC - (crash.betEnds - now) / 1000; crash.sec = 0; crash.m = 1; }
+  // the flight is shown CRASH_VIEW_DELAY behind the server: the crash point arrives (after the server's grace)
+  // about when the picture gets there, and "Забрать" pays the multiplier shown on the screen
+  else if (crash.phase === "fly") { crash.sec = Math.max(0, (now - CRASH_VIEW_DELAY - crash.flyStart) / 1000); crash.m = crashMult(crash.sec); }
+  else { crash.sec = Math.log(crash.point) / CRASH_K; crash.m = crash.point; }
+}
+function crashFrame(now) {
+  crashTick();
+  if (view === "crash") { renderCrash(); renderPlayers(); drawCrash(now); }
+  requestAnimationFrame(crashFrame);
+}
+$("cGo").onclick = async () => {
+  if (crash.pending) return;
+  const me = myCrash();
+  if (me && !(myLive() && crash.phase === "fly")) return;
+  crash.pending = true;
+  try {
+    if (me) {
+      const r = await api("/api/crash/cash", { m: Math.floor(crash.m * 100) / 100 });
+      me.cashed = r.cashed;
+      crashMsg(`Забрал ${fmt(r.win)} на x${r.cashed.toFixed(2)}`);
+      Sfx.play("coin");
+    } else if (crash.queued) {
+      await api("/api/crash/unqueue", {});
+      crash.queued = false; crashMsg("Ставка отменена");
+    } else {
+      crash.bet = clampBet(crash.bet);
+      const r = await api("/api/crash/bet", { bet: crash.bet, auto: CRASH_AUTO[crash.auto] });   // during a flight it goes to the next round
+      if (r.queued) { crash.queued = true; crashMsg("Ставка будет сделана в следующем раунде"); }
+      else crashMsg("Ставка принята. Забери выигрыш, пока мышь летит");
+    }
+  } catch (e) { crashMsg(e.message); }
+  finally { crash.pending = false; pollNow(); }
+};
+bindBet("cBet", "cBetDown", "cBetUp", crash, renderCrash);
+$("cAutoDown").onclick = () => { crash.auto = Math.max(0, crash.auto - 1); renderCrash(); };
+$("cAutoUp").onclick = () => { crash.auto = Math.min(CRASH_AUTO.length - 1, crash.auto + 1); renderCrash(); };
+$("doorCrash").onclick = () => show("crash");
+$("backCrash").onclick = () => show("hub");
+
+/* ---------- duel ---------- */
+// Two real players walk through the dark castle and a vampire takes one of them: exactly 50/50.
+// The survivor takes the pot of both stakes minus a 10% fee. Rooms, matching and the draw are on the
+// server: a player waits in a stake room until someone else walks in.
+const DUEL_STAKES = [100, 500, 1000, 5000, 25000, 95000];
+const DUEL_FEE = 0.10;
+const DUEL_WALK = 2.8, DUEL_BITE = 3.9, DUEL_END = 4.6;      // scene timeline, seconds
+const duel = { rooms: DUEL_STAKES.map((stake) => ({ stake, waiting: null, waitingId: null })), phase: "hall", stake: 0, opp: "",
+  youDie: false, prize: 0, t0: 0, resolved: false, hist: [], raf: 0 };
+
+function renderRooms() {
+  $("dBal").textContent = fmt(Wallet.get());
+  $("duelRooms").innerHTML = duel.rooms.map((r, i) => {
+    const mine = !!Net.user && r.waitingId === Net.user.id;
+    return `<div class="room ${r.waiting ? "busy" : ""}"><i class="candle l"></i><i class="candle r"></i><div class="stake">${fmt(r.stake)}</div>` +
+      `<div class="who">${r.waiting ? `${escapeHtml(r.waiting)}<br>${mine ? "это ты" : "ждёт соперника"}` : "Зал пуст"}</div>` +
+      `<button data-room="${i}" ${Wallet.get() < r.stake || mine || duel.phase !== "hall" ? "disabled" : ""}>${r.waiting ? "Войти" : "Создать"}</button></div>`;
+  }).join("");
+  $("dHist").innerHTML = duel.hist.map((h) => `<span class="${h > 0 ? "w" : ""}">${h > 0 ? "+" : "−"}${fmt(Math.abs(h))}</span>`).join("");
+  $("backDuel").disabled = duel.phase === "walk";
+}
+function duelOnPoll(d, balance) {
+  duel.rooms = d.rooms;
+  // still listed in a room from an earlier visit: take the stake back
+  if (duel.phase === "hall" && !duel.pending && Net.user && d.rooms.some((r) => r.waitingId === Net.user.id)) {
+    api("/api/duel/leave", {}).catch(() => {});
+  }
+  for (const ev of d.events || []) {
+    if (duel.phase === "wait" && ev.stake === duel.stake) {
+      Net.holdUntil = Date.now() + 15000;       // the scene reveals the outcome first
+      duelOnMatch({ ...ev, balance });
+    } else toast(ev.youDie ? `Дуэль ${fmt(ev.stake)}: тебя забрал вампир` : `Дуэль ${fmt(ev.stake)}: ты выжил · +${fmt(ev.prize)}`, ev.youDie);
+  }
+  if (view === "duel") renderRooms();
+}
+function openArena(stake) {
+  $("duel").classList.add("fighting");
+  $("dRes").textContent = ""; $("dRes").className = "dres";
+  $("dAgain").disabled = true; $("dLeave").disabled = false; $("dLeave").textContent = "Уйти";
+  $("dPot").textContent = `Банк ${fmt(stake * 2)} · выживший получит ${fmt(Math.floor(stake * 2 * (1 - DUEL_FEE)))}`;
+}
+async function enterDuel(stake) {
+  if (Wallet.get() < stake) { $("dNext").textContent = "Не хватает монэток на ставку"; return; }
+  if (duel.pending) return;
+  duel.pending = true; duel.stake = stake;
+  try {
+    const sent = Date.now();
+    const r = await api("/api/duel/join", { stake }, { keepBalance: true });
+    if (r.now) Net.offset = r.now - (sent + Date.now()) / 2;
+    if (r.wait) { Wallet.set(r.balance); duelOnWait(r); }
+    else duelOnMatch({ ...r.match, balance: r.balance });
+  } catch (e) { $("dNext").textContent = e.message; }
+  finally { duel.pending = false; pollNow(); }
+}
+// nobody was in the room: wait alone at the entrance until a real opponent joins
+function duelOnWait(m) {
+  Object.assign(duel, { stake: m.stake, opp: "", phase: "wait", resolved: false, t0: performance.now() });
+  openArena(m.stake);
+  $("dNext").textContent = "Ждём соперника… Можно уйти, ставка вернётся";
+  renderRooms();
+  cancelAnimationFrame(duel.raf); duel.raf = requestAnimationFrame(duelFrame);
+}
+// matched: the server has already drawn who survives and paid the winner; the scene plays it out
+function duelOnMatch(m) {
+  Object.assign(duel, { stake: m.stake, opp: m.opp, prize: m.prize, pendingBalance: m.balance });
+  openArena(m.stake);
+  $("dLeave").disabled = true;
+  // both players' scenes start at the same server moment, startAt
+  const wait = m.startAt ? Math.max(0, m.startAt - (Date.now() + Net.offset)) : 0;
+  Object.assign(duel, { phase: "walk", t0: performance.now() + wait, youDie: !!m.youDie, step: -1, dimmed: false, swooped: false, resolved: false });
+  $("dOppName").textContent = m.opp;
+  $("dNext").textContent = "Тише… в замке кто-то есть";
+  renderRooms();
+  cancelAnimationFrame(duel.raf); duel.raf = requestAnimationFrame(duelFrame);
+}
+function resolveDuel() {
+  duel.resolved = true; duel.phase = "done";
+  if (typeof duel.pendingBalance === "number") Wallet.set(duel.pendingBalance);
+  if (!duel.youDie) {
+    $("dRes").textContent = `Ты выжил · +${fmt(duel.prize)}`;
+    $("dNext").textContent = `Вампир забрал ${duel.opp}. Банк твой`;
+    duel.hist.unshift(duel.prize - duel.stake);
+    Sfx.play("win");
+  } else {
+    $("dRes").textContent = "Тебя забрал вампир"; $("dRes").classList.add("lose");
+    $("dNext").textContent = `${duel.opp} выжил и унёс банк`;
+    duel.hist.unshift(-duel.stake);
+    Sfx.play("lose");
+  }
+  duel.hist.length = Math.min(duel.hist.length, 10);
+  $("dAgain").disabled = Wallet.get() < duel.stake;
+  $("dLeave").disabled = false; $("dLeave").textContent = "К залам";
+  updateHud(); renderRooms();
+}
+$("duelRooms").onclick = (e) => {
+  const b = e.target.closest("button[data-room]");
+  if (b) enterDuel(duel.rooms[+b.dataset.room].stake);
+};
+$("dAgain").onclick = () => { duel.phase = "hall"; enterDuel(duel.stake); };
+$("dLeave").onclick = () => {
+  if (duel.phase === "wait") api("/api/duel/leave", {}).catch((e) => toast(e.message, true));     // the server refunds the stake
+  duel.phase = "hall"; cancelAnimationFrame(duel.raf);
+  $("duel").classList.remove("fighting"); $("dNext").textContent = "Выбери зал"; renderRooms();
+};
+$("doorDuel").onclick = () => show("duel");
+$("backDuel").onclick = () => { if (duel.phase === "wait") $("dLeave").onclick(); show("hub"); };
+
+// pixel art: wanderer (two walk frames) and the vampire
+const WANDERER = [
+  ["..###..", ".#####.", ".#ooo#.", "..###..", ".#####.", "#######", "#.###.#", "#.###.#", ".#####.", ".#####.", ".##.##.", ".#...#.", "##...##"],
+  ["..###..", ".#####.", ".#ooo#.", "..###..", ".#####.", "#######", "#.###.#", "#.###.#", ".#####.", ".#####.", "..#.#..", "..#.#..", ".##.##."],
+];
+const VAMPIRE = ["....#####....", "...#ooooo#...", "...#r#o#r#...", "...#ooooo#...", "....#w.w#....", "#..#######..#", "##.#######.##",
+  "#############", ".###########.", "..#########..", "...#######...", "....#...#...."];
+function drawPix(x, rows, cx, bottom, pal, s = 2) {
+  const left = Math.round(cx - rows[0].length * s / 2), top = Math.round(bottom - rows.length * s);
+  rows.forEach((row, ry) => [...row].forEach((ch, i) => { if (pal[ch]) { x.fillStyle = pal[ch]; x.fillRect(left + i * s, top + ry * s, s, s); } }));
+}
+const DW = 192, DH = 108, FLOOR = 90, YOU_X = 80, OPP_X = 112;
+function drawDuel(now) {
+  const x = $("dCanvas").getContext("2d");
+  const t = duel.phase === "wait" ? 0 : Math.max(0, (now - duel.t0) / 1000);   // before the shared start: standing at the gate
+  const walking = duel.phase === "walk" && t < DUEL_WALK;
+  const scroll = (duel.phase === "wait" ? 0 : Math.min(t, DUEL_WALK)) * 26;
+  const dark = t < DUEL_WALK ? 0 : Math.min(1, (t - DUEL_WALK) / 0.5);
+
+  // corridor: stone wall, moonlit lancet windows, pillars with torches, flagstone floor
+  x.fillStyle = "#151515"; x.fillRect(0, 0, DW, DH);
+  for (let k = -1; k < 6; k++) {
+    const px = Math.round(k * 48 - (scroll % 48));
+    x.fillStyle = "#2a2a2a"; x.fillRect(px + 14, 22, 20, 44);
+    x.beginPath(); x.arc(px + 24, 22, 10, Math.PI, 0); x.fill();
+    x.fillStyle = `rgba(200,200,200,${0.35 * (1 - dark * 0.7)})`; x.fillRect(px + 17, 24, 14, 40);
+    x.beginPath(); x.arc(px + 24, 24, 7, Math.PI, 0); x.fill();
+    x.fillStyle = "#151515"; x.fillRect(px + 23, 18, 2, 46); x.fillRect(px + 16, 42, 16, 2);
+    x.fillStyle = "#0a0a0a"; x.fillRect(px + 40, 0, 8, FLOOR);
+    if (dark < 1) {
+      const f = 0.6 + 0.4 * Math.sin(now / 90 + k * 2);
+      x.fillStyle = `rgba(255,230,180,${(1 - dark) * 0.18 * f})`; x.beginPath(); x.arc(px + 44, 40, 16, 0, Math.PI * 2); x.fill();
+      x.fillStyle = `rgba(255,240,210,${(1 - dark) * f})`; x.fillRect(px + 43, 36, 3, 4);
+    }
+    x.fillStyle = "#3a3a3a"; x.fillRect(px + 42, 40, 5, 2);
+  }
+  x.fillStyle = "#0c0c0c"; x.fillRect(0, FLOOR, DW, DH - FLOOR);
+  x.fillStyle = "#232323";
+  for (let k = -1; k < 10; k++) x.fillRect(Math.round(k * 24 - (scroll % 24)), FLOOR + 6, 22, 1);
+  x.fillStyle = "#2e2e2e"; x.fillRect(0, FLOOR, DW, 1);
+
+  // the wanderers
+  const frame = walking ? Math.floor(t / 0.2) % 2 : 1;
+  const bob = walking && frame === 0 ? 1 : 0;
+  const victimX = duel.youDie ? YOU_X : OPP_X;
+  let liftY = 0, gone = false;
+  if (t > DUEL_BITE) { liftY = (t - DUEL_BITE) * 140; gone = liftY > FLOOR + 30; }
+  const people = [[YOU_X, { "#": "#a8a8a8", o: "#e8e8e8" }, duel.youDie], [OPP_X, { "#": "#4e4e4e", o: "#bdbdbd" }, !duel.youDie]];
+  for (const [px, pal, isVictim] of people) {
+    if (duel.phase === "wait" && px === OPP_X) continue;
+    if (isVictim && gone) continue;
+    drawPix(x, WANDERER[frame], px, FLOOR - bob - (isVictim ? liftY : 0), pal);
+  }
+
+  // darkness, then red eyes, then the vampire swoops onto the victim and carries them off
+  if (dark) { x.fillStyle = `rgba(0,0,0,${0.55 * dark})`; x.fillRect(0, 0, DW, DH); }
+  if (t > DUEL_WALK + 0.3 && t < DUEL_BITE - 0.45 && Math.floor(t * 6) % 3) {
+    x.fillStyle = "#e02020"; x.fillRect(victimX - 4, 18, 2, 2); x.fillRect(victimX + 2, 18, 2, 2);
+  }
+  if (t > DUEL_BITE - 0.45) {
+    const dive = Math.min(1, (t - (DUEL_BITE - 0.45)) / 0.45);
+    const vy = -10 + dive * (FLOOR - 14) - liftY;
+    drawPix(x, VAMPIRE, victimX, vy, { "#": "#050505", o: "#d8d8d8", r: "#e02020", w: "#fff" }, 3);
+    if (t > DUEL_BITE && t < DUEL_BITE + 0.35) { x.fillStyle = `rgba(170,20,20,${0.5 * (1 - (t - DUEL_BITE) / 0.35)})`; x.fillRect(0, 0, DW, DH); }
+  }
+  // survivor's glow
+  if (t > DUEL_END - 0.3) {
+    const sx = duel.youDie ? OPP_X : YOU_X;
+    const g = x.createRadialGradient(sx, FLOOR - 14, 2, sx, FLOOR - 14, 34);
+    g.addColorStop(0, "rgba(255,255,255,.25)"); g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g; x.fillRect(sx - 34, FLOOR - 48, 68, 68);
+  }
+
+  // name tags follow the figures
+  const tag = (el, px, hide) => { el.style.left = (px / DW * 100) + "%"; el.style.top = ((FLOOR - 30) / DH * 100) + "%"; el.style.opacity = hide ? 0 : 1; };
+  tag($("dYouName"), YOU_X, duel.youDie && t > DUEL_BITE);
+  tag($("dOppName"), OPP_X, duel.phase === "wait" || (!duel.youDie && t > DUEL_BITE));
+  return t;
+}
+function duelFrame(now) {
+  if (duel.phase === "hall") return;
+  const t = drawDuel(now);
+  if (duel.phase === "walk") {
+    const step = Math.floor(t / 0.4);
+    if (t < DUEL_WALK && step !== duel.step) { duel.step = step; Sfx.play("step"); }
+    if (t > DUEL_WALK && !duel.dimmed) { duel.dimmed = true; $("dNext").textContent = "Факелы гаснут…"; }
+    if (t > DUEL_BITE - 0.45 && !duel.swooped) { duel.swooped = true; Sfx.play("vamp"); }
+    if (t > DUEL_END && !duel.resolved) resolveDuel();
+  }
+  if (duel.phase === "wait" || duel.phase === "walk" || t < DUEL_END + 1.5) duel.raf = requestAnimationFrame(duelFrame);
+}
+
+/* ---------- upgrader ---------- */
+// Stake a sum and aim for x times more. Win chance = 0.90 / multiplier, drawn as the red arc on the dial.
+// The blade stops at a uniformly random angle, so the arc's share of the circle is exactly the chance.
+const UPG_MULTS = [1.2, 1.5, 2, 3, 5, 10, 20, 50, 100];
+const UPG_EDGE = 0.90, UPG_MIN = BET_MIN, UPG_MAX = BET_MAX;
+const UPG_SPIN_MS = 3400;
+const upg = { bet: 100, mult: 2, phase: "idle", from: 0, to: 0, t0: 0, angle: 180, tick: 0, res: null, hist: [], bannerTimer: 0 };
+const upgChance = () => UPG_EDGE / UPG_MULTS[upg.mult];
+// The win arc always sits in the same place: centred on the top of the dial.
+Object.defineProperty(upg, "arcStart", { get: () => -upgChance() * 180 });
+
+const UW = 160, UC = 80, toRad = (deg) => (deg - 90) * Math.PI / 180;
+function annulus(x, r1, r2, a0, a1) {
+  x.beginPath(); x.arc(UC, UC, r2, toRad(a0), toRad(a1)); x.arc(UC, UC, r1, toRad(a1), toRad(a0), true); x.closePath(); x.fill();
+}
+function drawUpg(now = performance.now()) {
+  const x = $("uCanvas").getContext("2d");
+  const span = upgChance() * 360;
+  const flash = upg.phase === "done" && upg.res ? Math.max(0, 1 - (now - upg.res.at) / 900) : 0;
+  x.clearRect(0, 0, UW, UW);
+  // stone rim and dark ring
+  x.fillStyle = "#151515"; x.beginPath(); x.arc(UC, UC, 77, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = "#6a6a6a"; x.lineWidth = 2; x.beginPath(); x.arc(UC, UC, 76, 0, Math.PI * 2); x.stroke();
+  x.fillStyle = "#262626"; annulus(x, 50, 70, 0, 360);
+  // the winning arc, pulsing gently; flares on a win, goes dull on a loss
+  const pulse = upg.phase === "idle" ? 0.85 + 0.15 * Math.sin(now / 300) : 1;
+  const won = upg.phase === "done" && upg.res && upg.res.win;
+  x.fillStyle = won ? `rgb(${200 + 55 * flash},${40 + 120 * flash},${40 + 120 * flash})` : upg.phase === "done" && upg.res ? "#4a1010" : `rgba(176,28,28,${pulse})`;
+  annulus(x, 50, 70, upg.arcStart, upg.arcStart + span);
+  // tick marks every 10 degrees, longer every 90
+  x.fillStyle = "#080808";
+  for (let a = 0; a < 360; a += 10) {
+    const r0 = a % 90 ? 64 : 58;
+    for (let r = r0; r <= 70; r += 1) x.fillRect(Math.round(UC + r * Math.cos(toRad(a))), Math.round(UC + r * Math.sin(toRad(a))), 1, 1);
+  }
+  // inner disc with a faint gothic quatrefoil
+  const g = x.createRadialGradient(UC, UC, 4, UC, UC, 50);
+  g.addColorStop(0, "#202020"); g.addColorStop(1, "#090909");
+  x.fillStyle = g; x.beginPath(); x.arc(UC, UC, 49, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = "#1c1c1c"; x.lineWidth = 2;
+  for (const [dx, dy] of [[0, -14], [14, 0], [0, 14], [-14, 0]]) { x.beginPath(); x.arc(UC + dx, UC + dy, 14, 0, Math.PI * 2); x.stroke(); }
+  // the blade: a pointer living in the ring, so the centre text stays readable
+  const a = toRad(upg.angle), ca = Math.cos(a), sa = Math.sin(a);
+  const pt = (r, side = 0) => [UC + r * ca - side * sa, UC + r * sa + side * ca];
+  x.fillStyle = "#e8e8e8";
+  x.beginPath(); x.moveTo(...pt(74)); x.lineTo(...pt(56, -3)); x.lineTo(...pt(46, -2)); x.lineTo(...pt(46, 2)); x.lineTo(...pt(56, 3)); x.closePath(); x.fill();
+  x.fillStyle = "#7a7a7a"; x.beginPath(); x.moveTo(...pt(45, -7)); x.lineTo(...pt(45, 7)); x.lineTo(...pt(42, 7)); x.lineTo(...pt(42, -7)); x.closePath(); x.fill();
+  x.fillStyle = "#4a2a1a"; x.beginPath(); x.moveTo(...pt(42, -1.5)); x.lineTo(...pt(42, 1.5)); x.lineTo(...pt(35, 1.5)); x.lineTo(...pt(35, -1.5)); x.closePath(); x.fill();
+  x.fillStyle = "#c01c1c"; x.beginPath(); x.arc(...pt(66), 1.2, 0, Math.PI * 2); x.fill();     // blood on the tip
+}
+function renderUpg() {
+  const busy = upg.phase === "spin", mult = UPG_MULTS[upg.mult];
+  $("uBal").textContent = fmt(Wallet.get());
+  showBet("uBet", upg.bet, busy);
+  $("uMult").textContent = "x" + mult;
+  $("uChance").textContent = (upgChance() * 100).toFixed(upgChance() < 0.1 ? 2 : 1) + "%";
+  $("uTarget").textContent = `${fmt(upg.bet)} → ${fmt(upg.bet * mult)}`;
+  for (const id of ["uBetDown", "uBetUp", "uMultDown", "uMultUp", "backUpg", "uGo"]) $(id).disabled = busy;
+  $("uBetDown").disabled ||= upg.bet <= UPG_MIN;
+  $("uBetUp").disabled ||= upg.bet >= UPG_MAX;
+  $("uMultDown").disabled ||= upg.mult === 0;
+  $("uMultUp").disabled ||= upg.mult === UPG_MULTS.length - 1;
+  $("uHist").innerHTML = upg.hist.map((h) => `<span class="${h > 0 ? "w" : ""}">${h > 0 ? "+" : "−"}${fmt(Math.abs(h))}</span>`).join("");
+  if (!busy) drawUpg();
+}
+async function spinUpg() {
+  if (upg.phase === "spin" || upg.pending) return;
+  upg.bet = clampBet(upg.bet);
+  const bet = upg.bet, mult = UPG_MULTS[upg.mult];
+  // the server charges the bet and picks where the blade stops; the page only spins to that angle
+  upg.pending = true;
+  let r;
+  try { r = await api("/api/upg/spin", { bet, mult: upg.mult }, { keepBalance: true }); }
+  catch (e) { upg.pending = false; $("uNext").textContent = e.message; return; }
+  upg.pending = false;
+  Wallet.set(Wallet.get() - bet);
+  upg.pendingBalance = r.balance;
+  const land = r.land, win = r.win;
+  upg.from = upg.angle % 360;
+  upg.to = upg.from + 360 * 5 + ((land - upg.from + 360) % 360);
+  Object.assign(upg, { phase: "spin", t0: performance.now(), tick: Math.floor(upg.from / 10), res: { win, bet, prize: r.prize, mult } });
+  clearTimeout(upg.bannerTimer);
+  $("uRes").className = "ures"; $("uRes").parentElement.classList.remove("burned", "blessed");
+  $("uNext").textContent = "Клинок вращается…";
+  updateHud(); renderUpg();
+  requestAnimationFrame(upgFrame);
+}
+function upgFrame(now) {
+  if (upg.phase === "spin") {
+    const p = Math.min(1, (now - upg.t0) / UPG_SPIN_MS), e = 1 - (1 - p) ** 4;
+    upg.angle = upg.from + (upg.to - upg.from) * e;
+    const tk = Math.floor(upg.angle / 10);
+    if (tk !== upg.tick) { upg.tick = tk; Sfx.play("tick"); }
+    if (p >= 1) finishUpg(now);
+  }
+  drawUpg(now);
+  if (upg.phase === "spin" || (upg.res && now - upg.res.at < 1000)) requestAnimationFrame(upgFrame);
+}
+function showUpgBanner(win, title, sub) {
+  const el = $("uRes");
+  el.innerHTML = `<b>${title.toUpperCase()}</b><small>${sub}</small>`;
+  el.className = "ures on " + (win ? "win" : "lose");
+  el.parentElement.classList.add(win ? "blessed" : "burned");
+  upg.bannerTimer = setTimeout(() => {
+    el.classList.add("fade");
+    upg.bannerTimer = setTimeout(() => { el.className = "ures"; el.parentElement.classList.remove("burned", "blessed"); }, 500);
+  }, 2600);
+}
+function finishUpg(now) {
+  const r = upg.res;
+  upg.phase = "done"; r.at = now; upg.angle %= 360;
+  Wallet.set(upg.pendingBalance);
+  if (r.win) {
+    showUpgBanner(true, "Улучшено", `+${fmt(r.prize)}`);
+    $("uNext").textContent = `Клинок попал в дугу. ${fmt(r.bet)} превратились в ${fmt(r.prize)}`;
+    upg.hist.unshift(r.prize - r.bet);
+    Sfx.play(r.mult >= 10 ? "big" : "win");
+  } else {
+    showUpgBanner(false, "Сгорело", `−${fmt(r.bet)}`);
+    $("uNext").textContent = "Клинок прошёл мимо дуги";
+    upg.hist.unshift(-r.bet);
+    Sfx.play("lose");
+  }
+  upg.hist.length = Math.min(upg.hist.length, 10);
+  updateHud(); renderUpg();
+}
+bindBet("uBet", "uBetDown", "uBetUp", upg, renderUpg);
+$("uMultDown").onclick = () => { upg.mult = Math.max(0, upg.mult - 1); renderUpg(); };
+$("uMultUp").onclick = () => { upg.mult = Math.min(UPG_MULTS.length - 1, upg.mult + 1); renderUpg(); };
+$("uGo").onclick = spinUpg;
+$("doorUpg").onclick = () => show("upg");
+$("backUpg").onclick = () => show("hub");
+// Payout check: __simulateUpg(mult index) -> % returned
+window.__simulateUpg = function (mi = 2, rounds = 300000) {
+  let back = 0;
+  for (let i = 0; i < rounds; i++) {
+    const arc = rnd() * 360, land = rnd() * 360;
+    if (((land - arc + 360) % 360) < UPG_EDGE / UPG_MULTS[mi] * 360) back += UPG_MULTS[mi];
+  }
+  return +(back / rounds * 100).toFixed(2);
+};
+
+/* ---------- coffins ---------- */
+// Case opening with coffins. Every case has its own nine items, but they sit on the same nine value
+// tiers (the server draws a tier), so each case returns the same share of its price; an item pays
+// price x multiplier, scaled by LOOT_K so the expected payout is exactly 90% of the case price.
+const LOOT = [
+  { m: 0.2, w: 30, rc: "#3a3a3a" },
+  { m: 0.5, w: 25, rc: "#4e4e4e" },
+  { m: 0.8, w: 18, rc: "#6a6a6a" },
+  { m: 1.2, w: 12, rc: "#8a8a8a" },
+  { m: 2, w: 8, rc: "#bdbdbd" },
+  { m: 3, w: 4, rc: "#e6e6e6" },
+  { m: 5, w: 2, rc: "#8e1b1b" },
+  { m: 10, w: 0.8, rc: "#c01c1c" },
+  { m: 25, w: 0.2, rc: "#ff3a3a" },
+];
+// [name, icon] from the cheapest tier to the rarest
+const CASE_ITEMS = [
+  // a pauper's grave
+  [["Кость", "bone"], ["Гвоздь", "nail"], ["Свеча", "candle"], ["Монета", "coin"], ["Ключ", "key"], ["Фонарь", "lantern"], ["Колокол", "bell"], ["Крест", "cross"], ["Череп", "skull"]],
+  // a vampire hunter's kit
+  [["Чеснок", "garlic"], ["Гвоздь", "nail"], ["Кол", "stake"], ["Фонарь", "lantern"], ["Крест", "cross"], ["Нож", "dagger"], ["Святая вода", "potion"], ["Книга", "book"], ["Меч", "sword"]],
+  // a count's belongings
+  [["Свеча", "candle"], ["Роза", "rose"], ["Монета", "coin"], ["Кольцо", "ring"], ["Кубок", "goblet"], ["Нож", "dagger"], ["Урна", "urn"], ["Амулет", "amulet"], ["Корона", "crown"]],
+  // a warlock's stash
+  [["Кость", "bone"], ["Свеча", "candle"], ["Зелье", "potion"], ["Книга", "book"], ["Череп", "skull"], ["Кольцо", "ring"], ["Амулет", "amulet"], ["Корона", "crown"], ["Клык", "fang"]],
+  // the vampire's own coffin
+  [["Роза", "rose"], ["Мышь", "bat"], ["Кольцо", "ring"], ["Клык", "fang"], ["Кубок", "goblet"], ["Амулет", "amulet"], ["Сердце", "heart"], ["Корона", "crown"], ["Труп вампира", "corpse"]],
+];
+const CASE_LOOT = CASE_ITEMS.map((items) => items.map(([name, icon], i) => ({ ...LOOT[i], name, icon })));
+const LOOT_W = LOOT.reduce((a, l) => a + l.w, 0);
+const LOOT_K = 0.90 / (LOOT.reduce((a, l) => a + l.m * l.w, 0) / LOOT_W);
+const COFFINS = [
+  { name: "Простой кейс", price: 100, w1: "#3a3a3a", w2: "#5e5e5e", cross: "#a0a0a0" },
+  { name: "Обычный кейс", price: 500, w1: "#262626", w2: "#474747", cross: "#cfcfcf" },
+  { name: "Редкий кейс", price: 2500, w1: "#151515", w2: "#353535", cross: "#f0f0f0" },
+  { name: "Эпический кейс", price: 10000, w1: "#6a6a6a", w2: "#a0a0a0", cross: "#151515" },
+  { name: "Легендарный кейс", price: 50000, w1: "#2a0505", w2: "#5e0e0e", cross: "#ff4a4a" },
+];
+const cof = { sel: 0, phase: "idle", t0: 0, dist: 0, step: 0, tick: -1, won: null, hist: [] };
+const lootPay = (item, price) => Math.round(price * item.m * LOOT_K);
+const pickLoot = (ci = cof.sel) => weighted(CASE_LOOT[ci].map((l) => [l, l.w]));
+
+function buildLootSprites() {
+  const done = {};
+  CASE_LOOT.flat().forEach((l) => { l.spr = done[l.icon] ||= pixelIcon(l.icon); });
+}
+const lootCard = (l, price) => `<div class="loot" style="--rc:${l.rc}"><img src="${l.spr}" alt=""><i>${l.name}</i><b>${fmt(lootPay(l, price))}</b></div>`;
+function renderCof() {
+  const c = COFFINS[cof.sel], busy = cof.phase === "spin";
+  $("cBal2").textContent = fmt(Wallet.get());
+  $("cofName").textContent = c.name;
+  $("cofPrice").textContent = fmt(c.price);
+  $("cofList").innerHTML = COFFINS.map((k, i) =>
+    `<button class="coffin ${i === cof.sel ? "on" : ""} ${busy && i === cof.sel ? "shake" : ""}" data-cof="${i}" ${busy ? "disabled" : ""} style="--w1:${k.w1};--w2:${k.w2};--cross:${k.cross}">` +
+    `<div class="box"></div><b>${k.name}</b><span>${fmt(k.price)}</span></button>`).join("");
+  $("cofOdds").innerHTML = LOOT.map((l) => `<span style="--rc:${l.rc}">${fmt(lootPay(l, c.price))} · ${(l.w / LOOT_W * 100).toFixed(l.w < 1 ? 1 : 0)}%</span>`).join("");
+  $("cofGo").disabled = busy || Wallet.get() < c.price;
+  $("backCof").disabled = busy;
+  $("cofHist").innerHTML = cof.hist.map((h) => `<span class="${h > 0 ? "w" : ""}">${h > 0 ? "+" : "−"}${fmt(Math.abs(h))}</span>`).join("");
+  if (cof.phase === "idle" && !$("cofStrip").children.length) fillStrip(null);
+}
+// Strip of random loot; the won item sits near the end so the reel has a long run-up.
+const STRIP_LEN = 46, WIN_AT = 40;
+function fillStrip(won) {
+  const price = COFFINS[cof.sel].price;
+  const items = Array.from({ length: STRIP_LEN }, (_, i) => (won && i === WIN_AT ? won : pickLoot()));
+  const strip = $("cofStrip");
+  strip.style.setProperty("--lw", "calc(var(--cell) * .62)");
+  strip.innerHTML = items.map((l) => lootCard(l, price)).join("");
+  strip.style.transform = "translateX(0)";
+}
+async function openCoffin() {
+  const c = COFFINS[cof.sel];
+  if (cof.phase === "spin" || cof.pending) return;
+  // the server takes the price and draws the loot; the reel just rolls to it
+  cof.pending = true;
+  let r;
+  try { r = await api("/api/coffin/open", { coffin: cof.sel }, { keepBalance: true }); }
+  catch (e) { cof.pending = false; $("cofNext").textContent = e.message; return; }
+  cof.pending = false;
+  Wallet.set(Wallet.get() - c.price);
+  cof.won = CASE_LOOT[cof.sel][r.loot]; cof.pay = r.pay; cof.pendingBalance = r.balance;
+  fillStrip(cof.won);
+  $("cofRes").classList.remove("on");
+  const strip = $("cofStrip"), card = strip.children[0], win = strip.parentElement;
+  cof.step = card.offsetWidth + 6;
+  // land the marker somewhere inside the won card, never exactly on its edge
+  cof.dist = WIN_AT * cof.step + card.offsetWidth / 2 - win.clientWidth / 2 + (rnd() - 0.5) * card.offsetWidth * 0.7;
+  Object.assign(cof, { phase: "spin", t0: performance.now(), tick: -1 });
+  $("cofNext").textContent = "Открываем…";
+  updateHud(); renderCof();
+  requestAnimationFrame(cofFrame);
+}
+function cofFrame(now) {
+  const p = Math.min(1, (now - cof.t0) / 5200), e = 1 - (1 - p) ** 4;
+  const x = cof.dist * e;
+  $("cofStrip").style.transform = `translateX(${-x}px)`;
+  const under = Math.floor((x + $("cofStrip").parentElement.clientWidth / 2) / cof.step);
+  if (under !== cof.tick) { cof.tick = under; Sfx.play("tick"); }
+  if (p < 1) return requestAnimationFrame(cofFrame);
+  finishCoffin();
+}
+function finishCoffin() {
+  const c = COFFINS[cof.sel], l = cof.won, pay = cof.pay;
+  cof.phase = "idle";
+  Wallet.set(cof.pendingBalance);
+  $("cofStrip").children[WIN_AT].classList.add("won");
+  $("cofRes").innerHTML = `<img src="${l.spr}" alt="" style="width:calc(var(--cell)*.5);image-rendering:pixelated">${l.name}<small>+${fmt(pay)} · x${(pay / c.price).toFixed(2)}</small>`;
+  $("cofRes").classList.add("on");
+  $("cofNext").textContent = pay >= c.price ? `Выпало: ${l.name}. В плюсе` : `Выпало: ${l.name}. В минусе`;
+  cof.hist.unshift(pay - c.price);
+  cof.hist.length = Math.min(cof.hist.length, 10);
+  Sfx.play(l.m >= 5 ? "big" : l.m >= 1 ? "win" : "lose");
+  updateHud(); renderCof();
+}
+$("cofList").onclick = (e) => {
+  const b = e.target.closest("button[data-cof]");
+  if (!b || cof.phase === "spin") return;
+  cof.sel = +b.dataset.cof;
+  $("cofRes").classList.remove("on");
+  fillStrip(null);
+  renderCof();
+};
+$("cofRes").onclick = () => $("cofRes").classList.remove("on");
+$("cofGo").onclick = openCoffin;
+$("doorCof").onclick = () => show("cof");
+$("backCof").onclick = () => show("hub");
+// Payout check: __simulateCoffins() -> % of the price returned on average
+window.__simulateCoffins = function (rounds = 300000) {
+  let back = 0;
+  for (let i = 0; i < rounds; i++) back += lootPay(pickLoot(), 10000);
+  return +(back / rounds / 10000 * 100).toFixed(2);
+};
+
+/* ---------- crows ---------- */
+// Pixel crows on the backdrop: some perch on the lit window sills, some cross the sky.
+// Clicking a crow kills it: it drops, tumbles and fades, and another one turns up later.
+const CROW_ART = {
+  up: [
+    "..#.........#...",
+    "..##.......##...",
+    "...##.....##....",
+    "....###.###.....",
+    ".....#####...##.",
+    "#############o#>",
+    "..#########.....",
+    "....#.#.........",
+  ],
+  down: [
+    "................",
+    "................",
+    "................",
+    ".....#####...##.",
+    "#############o#>",
+    "...#########....",
+    "..##.......##...",
+    ".##.........##..",
+  ],
+  sit: [
+    "......##....",
+    ".....##o#>..",
+    ".....####...",
+    "....#####...",
+    "...######...",
+    "..#######...",
+    "..########..",
+    ".#########..",
+    ".########...",
+    "#########...",
+    "#..#####....",
+    "....#..#....",
+    "...##.##....",
+  ],
+};
+CROW_ART.dead = CROW_ART.down.map((r) => r.replace("o", "x"));
+const CROW_COLORS = { "#": "#050505", o: "#9a9a9a", ">": "#3a3a3a", x: "#c94a4a" };
+const CROW_SPR = {};
+for (const [k, rows] of Object.entries(CROW_ART)) {
+  const c = document.createElement("canvas");
+  c.width = rows[0].length; c.height = rows.length;
+  const x = c.getContext("2d");
+  rows.forEach((row, y) => [...row].forEach((ch, i) => { if (CROW_COLORS[ch]) { x.fillStyle = CROW_COLORS[ch]; x.fillRect(i, y, 1, 1); } }));
+  CROW_SPR[k] = { src: c.toDataURL(), w: c.width, h: c.height };
+}
+// Window sills and arches, spire tips and roof edges, in backdrop SVG coordinates.
+const PERCHES = [
+  [800, 470], [628, 520], [972, 520], [628, 430], [972, 430],
+  [800, 100], [618, 100], [982, 100], [578, 210], [1022, 210], [652, 238], [948, 238],
+  [64, 420], [110, 520], [31, 218], [75, 218], [119, 218], [170, 220],
+  [224, 414], [312, 414], [444, 414], [540, 430],
+  [1482, 480], [1320, 330], [1320, 150], [1486, 300], [1100, 470], [1230, 470],
+];
+// A perch is usable when it is on screen and not hidden behind the game UI.
+function perchVisible(p) {
+  const [x, y] = backdropPoint(p);
+  if (x < 16 || x > innerWidth - 16 || y < 16 || y > innerHeight) return false;
+  const el = document.elementFromPoint(x, y - 6);
+  return !el || !el.closest(".logo, .door, .plate, button, .side, .nave, .mgrid, .table");
+}
+// Map an SVG point to the screen: the backdrop covers the bottom 92% with xMidYMax slice.
+function rawBackdropPoint([vx, vy]) {
+  const W = innerWidth, H = innerHeight * 0.92, s = Math.max(W / 1600, H / 700);
+  return [(W - 1600 * s) / 2 + vx * s, innerHeight - 700 * s + vy * s];
+}
+// The backdrop is pixelated, so its edges land on a coarse grid. Snap each perch down onto the
+// actual top of the silhouette in the pixelated canvas, so crows stand flush instead of hovering.
+const perchY = new Map();
+function snapPerches() {
+  perchY.clear();
+  const cv = document.querySelector(".backdrop canvas.px");
+  if (!cv || !cv.width) return;
+  const r = cv.getBoundingClientRect(), kx = cv.width / r.width, ky = cv.height / r.height;
+  let data;
+  try { data = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; } catch { return; }
+  for (const p of PERCHES) {
+    const [x, y] = rawBackdropPoint(p);
+    const cx = Math.round((x - r.left) * kx), cy = Math.round((y - r.top) * ky);
+    if (cx < 0 || cx >= cv.width) continue;
+    for (let row = Math.max(0, cy - 4); row <= Math.min(cv.height - 1, cy + 4); row++) {
+      if (data[(row * cv.width + cx) * 4] < 40 && data[(row * cv.width + cx) * 4 + 3] > 0) { perchY.set(p, Math.round(r.top + row / ky)); break; }
+    }
+  }
+}
+function backdropPoint(p) {
+  const [x, y] = rawBackdropPoint(p);
+  return [Math.round(x), perchY.get(p) ?? Math.round(y)];
+}
+const crowPx = () => Math.max(2, Math.round(innerHeight / 230));
+const crows = [];
+const perchTaken = (p) => crows.some((c) => c.perch === p);
+const freePerches = () => PERCHES.filter((p) => !perchTaken(p) && perchVisible(p));
+
+function crowSet(c, spr) {
+  if (c.spr === spr) return;
+  c.spr = spr;
+  c.el.src = CROW_SPR[spr].src;
+}
+function flyFromEdge(c) {
+  const dir = rnd() < 0.5 ? 1 : -1;
+  c.mode = "fly"; c.perch = null; c.rot = 0; c.el.style.opacity = 1;
+  c.x = dir > 0 ? -60 : innerWidth + 60;
+  c.y = innerHeight * (0.06 + rnd() * 0.3);
+  const free = freePerches();
+  if (free.length && rnd() < 0.5) { c.target = free[Math.floor(rnd() * free.length)]; c.perch = c.target; }
+  else { c.target = null; c.tx = dir > 0 ? innerWidth + 60 : -60; c.ty = innerHeight * (0.04 + rnd() * 0.35); }
+  c.speed = 90 + rnd() * 70;
+}
+function takeOff(c) {
+  const dir = rnd() < 0.5 ? 1 : -1;
+  c.mode = "fly"; c.perch = null; c.target = null;
+  c.tx = dir > 0 ? innerWidth + 60 : -60; c.ty = -40 + rnd() * innerHeight * 0.2;
+  c.speed = 110 + rnd() * 60;
+}
+function killCrow(c, e) {
+  if (c.mode === "fall" || c.mode === "gone") return;
+  e.stopPropagation();
+  c.mode = "fall"; c.perch = null; c.vx = (rnd() - 0.5) * 80; c.vy = -160; c.spin = (rnd() < 0.5 ? -1 : 1) * (360 + rnd() * 360); c.t = 0;
+  crowSet(c, "dead");
+  Sfx.play("crow");
+  const layer = $("crows");
+  for (let i = 0; i < 6; i++) {
+    const f = document.createElement("div");
+    f.className = "feather";
+    f.style.left = c.x + "px"; f.style.top = c.y - 10 + "px";
+    f.style.setProperty("--fx", (rnd() - 0.5) * 90 + "px");
+    f.style.setProperty("--fy", rnd() * 70 - 20 + "px");
+    layer.appendChild(f);
+    setTimeout(() => f.remove(), 1200);
+  }
+}
+// The game screens lie over the crow layer, so a crow is hit-tested by position: a click anywhere on the
+// screen kills the crow under it, unless the click lands on a control (a button, a door, a tile...).
+const CROW_SKIP = "button, input, select, textarea, a, label, .door, .tile, .room, .coffin, [data-room], .modal, .cash-modal";
+// a crow behind a solid panel (the reels, a card table) is out of sight and out of reach
+function hidesCrows(el) {
+  for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    if (n.id === "crows") return false;
+    if (/^(CANVAS|IMG|SVG|VIDEO)$/i.test(n.tagName)) return true;
+    const cs = getComputedStyle(n);
+    if (cs.backgroundImage !== "none") return true;
+    const a = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
+    if (a) { const v = a[1].split(",").map(Number); if ((v.length < 4 ? 1 : v[3]) > 0.35) return true; }
+  }
+  return false;
+}
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest || e.target.closest(CROW_SKIP) || hidesCrows(e.target)) return;
+  const pad = 6;
+  for (let i = crows.length - 1; i >= 0; i--) {
+    const c = crows[i];
+    if (c.mode === "fall" || c.mode === "gone") continue;
+    const r = c.el.getBoundingClientRect();
+    if (e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad) return killCrow(c, e);
+  }
+}, true);
+function addCrow(perched) {
+  const el = document.createElement("img");
+  el.className = "crow"; el.alt = ""; el.draggable = false;
+  const c = { el, mode: "fly", x: 0, y: 0, face: 1, rot: 0, flap: rnd(), bob: rnd() * 6, timer: 0, spr: "" };
+  el.addEventListener("pointerdown", (e) => killCrow(c, e));
+  $("crows").appendChild(el);
+  crows.push(c);
+  const free = freePerches();
+  if (perched && free.length) {
+    c.mode = "sit"; c.perch = free[Math.floor(rnd() * free.length)]; c.timer = 6 + rnd() * 14; c.face = rnd() < 0.5 ? 1 : -1;
+  } else {
+    flyFromEdge(c);
+    c.x = rnd() * innerWidth;                       // start mid-flight on page load
+  }
+}
+function stepCrow(c, dt) {
+  const px = crowPx();
+  if (c.mode === "sit") {
+    [c.x, c.y] = backdropPoint(c.perch);
+    crowSet(c, "sit");
+    c.timer -= dt;
+    if (rnd() < dt * 0.08) c.face = -c.face;          // turns its head now and then
+    if (rnd() < dt && !perchVisible(c.perch)) c.timer = 0;   // a game screen now covers the perch
+    if (c.timer <= 0) takeOff(c);
+  } else if (c.mode === "fly") {
+    let tx = c.tx, ty = c.ty;
+    if (c.target) [tx, ty] = backdropPoint(c.target);
+    const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy);
+    const step = c.speed * dt;
+    if (d <= step) {
+      if (c.target) { c.mode = "sit"; c.target = null; c.timer = 6 + rnd() * 14; }
+      else { c.mode = "gone"; c.timer = 2 + rnd() * 5; c.el.style.opacity = 0; }
+    } else {
+      c.x += dx / d * step; c.y += dy / d * step;
+      c.face = dx >= 0 ? 1 : -1;
+    }
+    c.flap += dt * 5;
+    c.bob += dt * 4;
+    crowSet(c, c.flap % 1 < 0.5 ? "up" : "down");
+  } else if (c.mode === "fall") {
+    c.t += dt;
+    c.vy += 900 * dt;
+    c.x += c.vx * dt; c.y += c.vy * dt;
+    c.rot += c.spin * dt;
+    if (c.t > 0.9) c.el.style.opacity = Math.max(0, 1 - (c.t - 0.9) / 0.6);
+    if (c.t > 1.5 || c.y > innerHeight + 60) { c.mode = "gone"; c.timer = 3 + rnd() * 5; c.el.style.opacity = 0; }
+  } else if (c.mode === "gone") {
+    c.timer -= dt;
+    if (c.timer <= 0) flyFromEdge(c);
+    return;
+  }
+  const s = CROW_SPR[c.spr];
+  c.el.style.width = s.w * px + "px";
+  const bob = c.mode === "fly" ? Math.sin(c.bob) * 4 : 0;
+  c.el.style.transform = `translate(${Math.round(c.x - s.w * px / 2)}px, ${Math.round(c.y - s.h * px + bob)}px) scaleX(${c.face}) rotate(${c.rot}deg)`;
+}
+// Dragons glide slowly across the far sky now and then. They live in the backdrop under the fog,
+// so they read as distant, and they ignore clicks.
+const DRAGON_ART = {
+  up: ["........##..........", ".........###........", "..........####......", "...........#####....", "#..........######...",
+    "##.##############.##", ".###############.###", "......#.#....#.#...."],
+  down: ["....................", "....................", "....................", "#...................",
+    "##.##############.##", ".###############.###", "...........######...", "......#.#..#####....", "..........####......", "..........##........"],
+};
+const DRAGON_SPR = {};
+for (const [k, rows] of Object.entries(DRAGON_ART)) {
+  const c = document.createElement("canvas");
+  c.width = rows[0].length; c.height = rows.length;
+  const x = c.getContext("2d");
+  x.fillStyle = "#1c1c1c";
+  rows.forEach((row, y) => [...row].forEach((ch, i) => { if (ch === "#") x.fillRect(i, y, 1, 1); }));
+  DRAGON_SPR[k] = { src: c.toDataURL(), h: c.height, top: k === "up" ? 0 : -1 };   // keep the body row level between frames
+}
+const dragons = [];
+function launchDragon(d) {
+  d.dir = rnd() < 0.5 ? 1 : -1;
+  d.x = d.dir > 0 ? -80 : innerWidth + 80;
+  d.y = innerHeight * (0.1 + rnd() * 0.22);
+  d.speed = 22 + rnd() * 18;                         // slow: distant things cross the sky slowly
+  d.px = Math.max(3, Math.round(innerHeight / 190)) + Math.round(rnd());
+  d.phase = rnd() * 6; d.wait = 0; d.el.style.display = "";
+}
+function stepDragon(d, dt) {
+  if (d.wait > 0) { d.wait -= dt; if (d.wait <= 0) launchDragon(d); return; }
+  d.x += d.dir * d.speed * dt;
+  d.phase += dt;
+  if (d.x < -100 || d.x > innerWidth + 100) { d.el.style.display = "none"; d.wait = 8 + rnd() * 16; return; }
+  const spr = Math.floor(d.phase / 0.55) % 2 ? DRAGON_SPR.down : DRAGON_SPR.up;
+  if (d.el.src !== spr.src) d.el.src = spr.src;
+  d.el.style.width = 20 * d.px + "px";
+  const y = d.y + Math.sin(d.phase * 0.7) * 10 + spr.top * d.px;
+  d.el.style.transform = `translate(${Math.round(d.x)}px, ${Math.round(y)}px) scaleX(${d.dir})`;
+}
+function addDragon(delay) {
+  const el = document.createElement("img");
+  el.className = "dragon"; el.alt = "";
+  $("dragons").appendChild(el);
+  const d = { el };
+  dragons.push(d);
+  launchDragon(d);
+  if (delay) { d.wait = delay; el.style.display = "none"; }
+  else d.x = rnd() * innerWidth;                     // first one is already mid-flight
+}
+
+function startCrows() {
+  for (let i = 0; i < 3; i++) addCrow(true);
+  for (let i = 0; i < 2; i++) addCrow(false);
+  addDragon(0); addDragon(12);
+  let last = performance.now();
+  (function loop(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    crows.forEach((c) => stepCrow(c, dt));
+    dragons.forEach((d) => stepDragon(d, dt));
+    requestAnimationFrame(loop);
+  })(last);
+}
+
+// Payout check for mines: expected return per bet for a player who always takes `picks` slabs.
+window.__simulateMines = function (count = 3, picks = 3, rounds = 200000) {
+  let back = 0;
+  for (let r = 0; r < rounds; r++) {
+    const knives = new Set();
+    while (knives.size < count) knives.add(Math.floor(rnd() * MINE_TILES));
+    const order = [...Array(MINE_TILES).keys()].sort(() => rnd() - 0.5);
+    let ok = true;
+    for (let k = 0; k < picks; k++) if (knives.has(order[k])) { ok = false; break; }
+    if (ok) back += minesMultiplier(picks, count);
+  }
+  return +(back / rounds * 100).toFixed(2);
+};
+
+async function init() {
+  try { await Promise.all([document.fonts.load('40px "UnifrakturMaguntia"'), document.fonts.load('16px "Press Start 2P"')]); } catch {}
+  buildSprites();
+  buildGrain();
+  pixelateTitle();
+  render(state.grid);
+  $("doorSlotsImg").src = SPR.S;
+  $("doorMinesImg").src = SPR.knife;
+  $("doorBjImg").src = SPR.spade;
+  $("doorCrashImg").src = SPR.pug;
+  $("soundImg").src = SPR.S;
+  $("doorDuelImg").src = SPR.rott;
+  $("doorUpgImg").src = SPR.guide;
+  buildLootSprites();
+  $("doorCofImg").src = SPR.cross;
+  buildMinesGrid();
+  updateMines();
+  $("ptTable").innerHTML = Object.entries(SYMBOLS).filter(([, s]) => s.pays)
+    .map(([k, s]) => `<span class="s"><img class="spr" style="width:36px;height:36px" src="${SPR[k]}" alt=""></span><span>3 — ${s.pays[3]} · 4 — ${s.pays[4]} · 5 — ${s.pays[5]}</span>`).join("");
+  try { await pixelateBackdrop(); } catch {}
+  snapPerches();
+  startCrows();
+  requestAnimationFrame(crashFrame);
+  // sign in to the game server, through whichever address this player's network lets through
+  for (let i = 0; i < 12; i++) {
+    try { await pickServer(); await login(); break; }
+    catch (e) {
+      if ($("gate").classList.contains("on")) break;     // not opened from huEVO
+      toast("Подключаемся к серверу…", false);
+      await sleep(3000);
+    }
+  }
+  let t;
+  addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => {
+    const svg = document.querySelector(".backdrop svg"); svg.style.display = ""; pixelateBackdrop().then(snapPerches).catch(() => {});
+  }, 200); });
+}
+updateHud();
+init();
+</script>
+</body>
+</html>
