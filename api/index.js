@@ -384,12 +384,14 @@ const bjAction = (u, body) => tx(async (c) => {
 
 // ---------- upgrader ----------
 const UPG_MULTS = [1.2, 1.5, 2, 3, 5, 10, 20, 50, 100];
+// the upgrader keeps more than the other games: on average 65% of the stake comes back
+const UPG_EDGE = 0.65;
 const upgSpin = (u, body) => tx(async (c) => {
   const bet = Number(body.bet), mi = Number(body.mult);
   if (!validBet(bet)) throw httpErr(400, "Ставка от " + BET_MIN + " до " + BET_MAX);
   if (!Number.isInteger(mi) || mi < 0 || mi >= UPG_MULTS.length) throw httpErr(400, "Неверный множитель");
   if ((await change(c, u.id, -bet)) === null) throw httpErr(402, "Не хватает монэток на ставку");
-  const mult = UPG_MULTS[mi], chance = EDGE / mult, arcStart = -chance * 180;
+  const mult = UPG_MULTS[mi], chance = UPG_EDGE / mult, arcStart = -chance * 180;
   const land = rnd() * 360, win = ((land - arcStart + 360) % 360) < chance * 360;
   const prize = Math.floor(bet * mult);
   const balance = win ? await change(c, u.id, prize) : await balanceOf(c, u.id);
