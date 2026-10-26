@@ -1,1 +1,12 @@
-{"name":"nullified-casino-server","version":"1.0.0","private":true,"description":"Game server for Nullified Casino on huEVO: balances in huEVO coins, server-side games, live Crash and Duel.","main":"server.js","scripts":{"start":"node server.js"},"engines":{"node":">=18"},"dependencies":{"pg":"^8.11.3","ws":"^8.16.0"}}
+{
+  "name": "nullified-casino-server",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Game server for Nullified Casino on huEVO: balances in huEVO coins, server-side games, shared Crash and Duel. Runs as a Vercel function on Neon Postgres.",
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
