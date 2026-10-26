@@ -27,7 +27,8 @@ const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.
 
 const BET_MIN = 10, BET_MAX = 95000;
 const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
-const EDGE = 0.97;
+// share of every bet that comes back to players on average (return to player)
+const EDGE = 0.90;
 
 // ---------- randomness ----------
 const rnd = () => crypto.randomBytes(6).readUIntBE(0, 6) / 2 ** 48;
@@ -44,7 +45,7 @@ function httpErr(status, message, extra) { const e = new Error(message); e.statu
 // ---------- database ----------
 const DB_URL = process.env.DATABASE_URL || "";
 const pool = DB_URL ? new Pool({ connectionString: DB_URL, ssl: /localhost|127\.0\.0\.1/.test(DB_URL) ? false : { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10000 }) : null;
-const DUEL_STAKES = [100, 500, 1000, 5000, 25000, 95000], DUEL_FEE = 0.03;
+const DUEL_STAKES = [100, 500, 1000, 5000, 25000, 95000], DUEL_FEE = 1 - EDGE;
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, name TEXT, balance BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now());
 CREATE TABLE IF NOT EXISTS payments (intent_id TEXT PRIMARY KEY, user_id BIGINT, amount BIGINT, credited BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ DEFAULT now());
@@ -161,6 +162,8 @@ const PAYS = { rott: [0, 0, 0, 65, 260, 1300], pug: [0, 0, 0, 45, 130, 650], poo
 const BASE_WEIGHTS = { rott: 3, pug: 4, poodle: 5, guide: 6, bone: 8, A: 10, K: 10, Q: 12, J: 12, T: 12 };
 const WILD_REELS = [1, 2, 3], SCATTER_REELS = [0, 2, 4], WILD_WEIGHT = 2.2, SCATTER_WEIGHT = 3.4, SCATTER_PAY = 5;
 const FS_COUNTS = [[9, 35], [12, 30], [15, 20], [18, 10], [21, 5]];
+// the reel weights and pay table were tuned for a 97% return; every slot win is scaled down to EDGE
+const SLOT_SCALE = EDGE / 0.97;
 const LINES = [[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[1,0,0,0,1],[1,2,2,2,1],[0,0,1,2,2],[2,2,1,0,0],[1,2,1,0,1],
   [1,0,1,2,1],[0,1,1,1,0],[2,1,1,1,2],[0,1,0,1,0],[2,1,2,1,2],[1,1,0,1,1],[1,1,2,1,1],[0,0,2,0,0],[2,2,0,2,2],[0,2,2,2,0]];
 function reelTable(reel, free) {
@@ -192,11 +195,11 @@ function evaluate(grid, totalBet) {
     }
     mult = mult || 1;
     const pay = PAYS[first.s][count];
-    if (pay) wins.push({ line: li, sym: first.s, count, mult, amount: Math.floor(pay * lineBet * mult), cells });
+    if (pay) wins.push({ line: li, sym: first.s, count, mult, amount: Math.floor(pay * lineBet * mult * SLOT_SCALE), cells });
   });
   const scatters = [];
   grid.forEach((col, c) => col.forEach((cell, r) => { if (cell.s === "S") scatters.push([c, r]); }));
-  const scatterWin = scatters.length >= 3 ? SCATTER_PAY * totalBet : 0;
+  const scatterWin = scatters.length >= 3 ? Math.floor(SCATTER_PAY * totalBet * SLOT_SCALE) : 0;
   return { wins, scatters, scatterWin, total: wins.reduce((a, w) => a + w.amount, 0) + scatterWin };
 }
 const slotsSpin = (u, body) => tx(async (c) => {
@@ -306,7 +309,7 @@ async function bjFinish(c, u, st) {
     else if (dealerBJ) h.result = natural ? "push" : "lose";
     else if (d > 21 || p > d) h.result = "win";
     else h.result = p === d ? "push" : "lose";
-    paid += Math.floor({ bj: h.stake * 2.5, win: h.stake * 2, push: h.stake, lose: 0 }[h.result]);
+    paid += Math.floor({ bj: h.stake * 2.2, win: h.stake * 2, push: h.stake, lose: 0 }[h.result]);
     staked += h.stake;
   }
   st.phase = "done";
@@ -395,9 +398,9 @@ const LOOT_W = LOOT.reduce((a, [, w]) => a + w, 0);
 const LOOT_K = EDGE / (LOOT.reduce((a, [m, w]) => a + m * w, 0) / LOOT_W);
 const coffinOpen = (u, body) => tx(async (c) => {
   const ci = Number(body.coffin);
-  if (!Number.isInteger(ci) || ci < 0 || ci >= COFFIN_PRICES.length) throw httpErr(400, "Неверный гроб");
+  if (!Number.isInteger(ci) || ci < 0 || ci >= COFFIN_PRICES.length) throw httpErr(400, "Неверный кейс");
   const price = COFFIN_PRICES[ci];
-  if ((await change(c, u.id, -price)) === null) throw httpErr(402, "Не хватает монэток на этот гроб");
+  if ((await change(c, u.id, -price)) === null) throw httpErr(402, "Не хватает монэток на этот кейс");
   const loot = weighted(LOOT.map(([, w], i) => [i, w]));
   const pay = Math.round(price * LOOT[loot][0] * LOOT_K);
   const balance = await change(c, u.id, pay);
