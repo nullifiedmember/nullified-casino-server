@@ -23,7 +23,7 @@ const CLIENT_SECRET = process.env.HUEVO_CLIENT_SECRET || "";
 const HUEVO_API = (process.env.HUEVO_API || "https://huevo.su/api/apps/v1").replace(/\/$/, "");
 const PAYOUT_PATH = process.env.HUEVO_PAYOUT_PATH || "/credits";
 const VERIFY = process.env.HUEVO_VERIFY || "strict";
-const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.io,http://localhost:8765").split(",").map((s) => s.trim()).filter(Boolean);
+const ORIGINS = (process.env.ALLOWED_ORIGINS || "https://nullifiedmember.github.io,https://nullified-casino.dmitriibyshkov.workers.dev,http://localhost:8765").split(",").map((s) => s.trim()).filter(Boolean);
 
 const BET_MIN = 10, BET_MAX = 95000;
 const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
