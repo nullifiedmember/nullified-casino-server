@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS wins (id BIGSERIAL PRIMARY KEY, name TEXT, game TEXT,
 CREATE TABLE IF NOT EXISTS crash_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, fly_start BIGINT, crash_at BIGINT, ends BIGINT, point NUMERIC(10,2), settled BOOLEAN NOT NULL DEFAULT false);
 CREATE TABLE IF NOT EXISTS crash_bets (round_id BIGINT, user_id BIGINT, name TEXT, bet BIGINT, auto NUMERIC(10,2) NOT NULL DEFAULT 0, cashed NUMERIC(10,2), PRIMARY KEY (round_id, user_id));
 ALTER TABLE crash_bets ADD COLUMN IF NOT EXISTS cashed_at BIGINT;
+CREATE TABLE IF NOT EXISTS wheel_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, ends BIGINT, seg INT, settled BOOLEAN NOT NULL DEFAULT false);
+CREATE TABLE IF NOT EXISTS wheel_bets (round_id BIGINT, user_id BIGINT, name TEXT, pick INT, bet BIGINT, PRIMARY KEY (round_id, user_id, pick));
+CREATE TABLE IF NOT EXISTS jp_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, ends BIGINT, winner BIGINT, land DOUBLE PRECISION, settled BOOLEAN NOT NULL DEFAULT false);
+CREATE TABLE IF NOT EXISTS jp_bets (round_id BIGINT, user_id BIGINT, name TEXT, bet BIGINT, at BIGINT, PRIMARY KEY (round_id, user_id));
 CREATE TABLE IF NOT EXISTS duel_rooms (stake BIGINT PRIMARY KEY, user_id BIGINT, name TEXT, since BIGINT);
 CREATE TABLE IF NOT EXISTS duel_events (id BIGSERIAL PRIMARY KEY, user_id BIGINT, data JSONB, seen BOOLEAN NOT NULL DEFAULT false);
 INSERT INTO duel_rooms (stake) VALUES ${DUEL_STAKES.map((s) => "(" + s + ")").join(",")} ON CONFLICT DO NOTHING;`;
@@ -399,6 +403,227 @@ const upgSpin = (u, body) => tx(async (c) => {
   return { land, win, prize, balance };
 });
 
+// ---------- wheel of fortune: shared rounds, like Crash ----------
+// 50 sectors: 20 × x2, 8 × x5, 4 × x10, 2 × x20 and 16 skulls (0). Everyone bets on one or more multipliers
+// during the betting window, then one spin decides for all: a bet on the sector's multiplier pays bet × it.
+// Chance = count / 50, so every pick returns 80% on average. The sector is drawn when the round is created
+// and leaves the server only when the bets close. The order here must match WHEEL in the game.
+const WHEEL_PICKS = [2, 5, 10, 20];
+const WHEEL = (() => {
+  const w = new Array(50).fill(0), place = (mult, every, from) => { for (let i = from; i < 50; i += every) w[i] = mult; };
+  place(2, 5, 0); place(2, 5, 2); place(5, 25, 1); place(5, 25, 6); place(5, 25, 11); place(5, 25, 16);
+  place(10, 25, 3); place(10, 25, 13); place(20, 25, 21);
+  return w;
+})();
+const WHEEL_BET_MS = 15000, WHEEL_SPIN_MS = 6000, WHEEL_PAUSE_MS = 3000;
+const toWheelRound = (x) => ({ id: Number(x.id), betEnds: Number(x.bet_ends), ends: Number(x.ends), seg: Number(x.seg) });
+async function wheelCurrent() {
+  for (let i = 0; i < 4; i++) {
+    const r = await pool.query(`SELECT * FROM wheel_rounds ORDER BY id DESC LIMIT 1`);
+    const last = r.rows[0] ? toWheelRound(r.rows[0]) : null, now = Date.now();
+    if (last && now < last.ends) return last;
+    // rounds follow each other back to back while people play; after a quiet spell the next one starts now
+    const start = last && now - last.ends < 2000 ? last.ends : now, betEnds = start + WHEEL_BET_MS;
+    await pool.query(`INSERT INTO wheel_rounds (id, bet_ends, ends, seg) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+      [last ? last.id + 1 : 1, betEnds, betEnds + WHEEL_SPIN_MS + WHEEL_PAUSE_MS, Math.floor(rnd() * WHEEL.length)]);
+    if (last && rnd() < 0.01) {
+      await pool.query(`DELETE FROM wheel_bets WHERE round_id < $1`, [last.id - 5000]);
+      await pool.query(`DELETE FROM wheel_rounds WHERE id < $1`, [last.id - 5000]);
+    }
+  }
+  throw httpErr(503, "Раунд не создался, попробуй ещё раз");
+}
+// pays a round once its spin has played out, so the coins arrive when the wheel stops on everyone's screen
+async function wheelSettle() {
+  const open = await pool.query(`SELECT * FROM wheel_rounds WHERE NOT settled AND bet_ends <= $1 ORDER BY id LIMIT 3`, [Date.now() - WHEEL_SPIN_MS]);
+  for (const row of open.rows) {
+    const round = toWheelRound(row), mult = WHEEL[round.seg];
+    await tx(async (c) => {
+      const s = await c.query(`UPDATE wheel_rounds SET settled = true WHERE id = $1 AND NOT settled RETURNING id`, [round.id]);
+      if (!s.rows[0] || !mult) return;
+      const wins = await c.query(`SELECT user_id, name, bet FROM wheel_bets WHERE round_id = $1 AND pick = $2`, [round.id, mult]);
+      for (const b of wins.rows) {
+        const prize = Number(b.bet) * mult;
+        await change(c, Number(b.user_id), prize);
+        await pushWin(c, b.name, "Wheel", prize, mult);
+      }
+    });
+  }
+}
+async function wheelState(u) {
+  const cur = await wheelCurrent();
+  await wheelSettle();
+  const now = Date.now(), open = now < cur.betEnds;
+  const [bets, hist] = await Promise.all([
+    pool.query(`SELECT user_id, name, pick, bet FROM wheel_bets WHERE round_id = $1 ORDER BY bet DESC LIMIT 60`, [cur.id]),
+    // only spins that have stopped, so the strip never gives away the one still turning
+    pool.query(`SELECT seg FROM wheel_rounds WHERE settled ORDER BY id DESC LIMIT 10`),
+  ]);
+  return {
+    id: cur.id, phase: open ? "bet" : now < cur.betEnds + WHEEL_SPIN_MS ? "spin" : "done", betEnds: cur.betEnds,
+    spinMs: WHEEL_SPIN_MS, ends: cur.ends, now, seg: open ? null : cur.seg,
+    bets: bets.rows.map((b) => ({ id: Number(b.user_id), name: b.name, pick: Number(b.pick), bet: Number(b.bet) })),
+    hist: hist.rows.map((h) => WHEEL[Number(h.seg)]),
+  };
+}
+// the last 30 spins that have stopped: what fell, how many played, how much was staked and paid out
+async function wheelHistory() {
+  const rounds = (await pool.query(`SELECT id, seg FROM wheel_rounds WHERE settled ORDER BY id DESC LIMIT 30`)).rows;
+  if (!rounds.length) return { rounds: [] };
+  const bets = (await pool.query(`SELECT round_id, user_id, pick, bet FROM wheel_bets WHERE round_id = ANY($1::bigint[])`, [rounds.map((x) => x.id)])).rows;
+  return { rounds: rounds.map((x) => {
+    const mult = WHEEL[Number(x.seg)], mine = bets.filter((b) => Number(b.round_id) === Number(x.id));
+    return { id: Number(x.id), mult, players: new Set(mine.map((b) => Number(b.user_id))).size, staked: mine.reduce((a, b) => a + Number(b.bet), 0),
+      paid: mine.filter((b) => Number(b.pick) === mult).reduce((a, b) => a + Number(b.bet) * mult, 0) };
+  }) };
+}
+// a bet on a multiplier while the round takes bets; betting on the same multiplier again adds to it
+async function wheelBet(u, body) {
+  const bet = Number(body.bet), pick = Number(body.pick);
+  if (!validBet(bet)) throw httpErr(400, "Ставка от " + BET_MIN + " до " + BET_MAX);
+  if (!WHEEL_PICKS.includes(pick)) throw httpErr(400, "Нет такого множителя");
+  const cur = await wheelCurrent();
+  return tx(async (c) => {
+    if (Date.now() >= cur.betEnds) throw httpErr(409, "Ставки закрыты, жди следующий раунд");
+    const balance = await change(c, u.id, -bet);
+    if (balance === null) throw httpErr(402, "Не хватает монэток на ставку");
+    const r = await c.query(`INSERT INTO wheel_bets (round_id, user_id, name, pick, bet) VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (round_id, user_id, pick) DO UPDATE SET bet = wheel_bets.bet + EXCLUDED.bet RETURNING bet`, [cur.id, u.id, u.name, pick, bet]);
+    if (Number(r.rows[0].bet) > BET_MAX) throw httpErr(400, "На один множитель не больше " + BET_MAX);
+    return { balance, round: cur.id };
+  });
+}
+
+// ---------- roulette: players' stakes go into one pot, one of them takes it ----------
+// A round waits for its first two players; the second one starts a JP_BET_MS countdown, and anyone may add
+// to their stake (up to BET_MAX in total) until it runs out. The win chance is the player's share of the pot,
+// capped at JP_CAP, the excess spread over the others by their shares. The winner gets their own stake back
+// plus the others' stakes minus JP_FEE. The draw happens once, at the first look after the countdown.
+const JP_BET_MS = 20000, JP_SPIN_MS = 7000, JP_PAUSE_MS = 4000, JP_CAP = 0.65, JP_FEE = 0.2;
+function jpChances(bets) {
+  const pot = bets.reduce((a, b) => a + b.bet, 0);
+  let ch = bets.map((b) => b.bet / pot);
+  if (bets.length < 2) return ch;
+  // cap, hand the excess to everyone below the cap in proportion to their shares, repeat until nobody is over
+  for (let i = 0; i < bets.length; i++) {
+    const over = ch.map((c) => c > JP_CAP + 1e-12);
+    if (!over.some(Boolean)) break;
+    const excess = ch.reduce((a, c, k) => a + (over[k] ? c - JP_CAP : 0), 0);
+    const room = ch.reduce((a, c, k) => a + (over[k] ? 0 : c), 0);
+    ch = ch.map((c, k) => (over[k] ? JP_CAP : c + excess * c / room));
+  }
+  return ch;
+}
+const jpPrize = (bets, winner) => {
+  const pot = bets.reduce((a, b) => a + b.bet, 0), own = bets.find((b) => b.id === winner).bet;
+  return own + Math.floor((pot - own) * (1 - JP_FEE));
+};
+const toJp = (x) => ({ id: Number(x.id), betEnds: x.bet_ends === null ? null : Number(x.bet_ends), ends: x.ends === null ? null : Number(x.ends),
+  winner: x.winner === null ? null : Number(x.winner), land: x.land === null ? null : Number(x.land), settled: x.settled });
+async function jpBets(q, id) {
+  const r = await q.query(`SELECT user_id, name, bet FROM jp_bets WHERE round_id = $1 ORDER BY at, user_id`, [id]);
+  return r.rows.map((b) => ({ id: Number(b.user_id), name: b.name, bet: Number(b.bet) }));
+}
+// the round in play, with its winner drawn once the countdown is over
+async function jpCurrent() {
+  for (let i = 0; i < 4; i++) {
+    const r = await pool.query(`SELECT * FROM jp_rounds ORDER BY id DESC LIMIT 1`);
+    const last = r.rows[0] ? toJp(r.rows[0]) : null, now = Date.now();
+    if (last && !(last.ends && now >= last.ends)) {
+      if (!(last.betEnds && now >= last.betEnds && last.winner === null)) return last;
+      await jpDraw(last.id);
+      return toJp((await pool.query(`SELECT * FROM jp_rounds WHERE id = $1`, [last.id])).rows[0]);
+    }
+    await pool.query(`INSERT INTO jp_rounds (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, [last ? last.id + 1 : 1]);
+    if (last && rnd() < 0.01) {
+      await pool.query(`DELETE FROM jp_bets WHERE round_id < $1`, [last.id - 5000]);
+      await pool.query(`DELETE FROM jp_rounds WHERE id < $1`, [last.id - 5000]);
+    }
+  }
+  throw httpErr(503, "Раунд не создался, попробуй ещё раз");
+}
+// land: where on the circle (0..1, clockwise from the top) the pointer stops; players' arcs follow the bet order
+const jpDraw = (id) => tx(async (c) => {
+  const row = (await c.query(`SELECT * FROM jp_rounds WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+  if (!row || row.winner !== null) return;
+  const bets = await jpBets(c, id), ch = jpChances(bets), land = rnd();
+  let acc = 0, winner = bets[bets.length - 1].id;
+  for (let k = 0; k < bets.length; k++) { acc += ch[k]; if (land < acc) { winner = bets[k].id; break; } }
+  await c.query(`UPDATE jp_rounds SET winner = $2, land = $3 WHERE id = $1`, [id, winner, land]);
+});
+// pays the winner once the spin has played out on everyone's screen
+async function jpSettle() {
+  const open = await pool.query(`SELECT * FROM jp_rounds WHERE NOT settled AND winner IS NOT NULL AND bet_ends <= $1 ORDER BY id LIMIT 3`, [Date.now() - JP_SPIN_MS]);
+  for (const row of open.rows) {
+    await tx(async (c) => {
+      const s = await c.query(`UPDATE jp_rounds SET settled = true WHERE id = $1 AND NOT settled RETURNING winner`, [row.id]);
+      if (!s.rows[0]) return;
+      const bets = await jpBets(c, Number(row.id)), winner = Number(s.rows[0].winner), prize = jpPrize(bets, winner);
+      await change(c, winner, prize);
+      await pushWin(c, bets.find((b) => b.id === winner).name, "Roulette", prize);
+    });
+  }
+}
+async function jpState(u) {
+  const cur = await jpCurrent();
+  await jpSettle();
+  const now = Date.now(), bets = await jpBets(pool, cur.id), ch = jpChances(bets);
+  const phase = !cur.betEnds ? "wait" : now < cur.betEnds ? "bet" : now < cur.betEnds + JP_SPIN_MS ? "spin" : "done";
+  const hist = await pool.query(`SELECT r.id, r.winner, b.name FROM jp_rounds r JOIN jp_bets b ON b.round_id = r.id AND b.user_id = r.winner
+    WHERE r.settled ORDER BY r.id DESC LIMIT 8`);
+  return {
+    id: cur.id, phase, betEnds: cur.betEnds, spinMs: JP_SPIN_MS, now, cap: JP_CAP, fee: JP_FEE,
+    bets: bets.map((b, k) => ({ ...b, chance: ch[k] })), pot: bets.reduce((a, b) => a + b.bet, 0),
+    winner: phase === "wait" || phase === "bet" ? null : cur.winner, land: phase === "wait" || phase === "bet" ? null : cur.land,
+    prize: phase === "wait" || phase === "bet" || cur.winner === null ? 0 : jpPrize(bets, cur.winner),
+    hist: hist.rows.map((h) => h.name),
+  };
+}
+async function jpBet(u, body) {
+  const bet = Number(body.bet);
+  if (!validBet(bet)) throw httpErr(400, "Ставка от " + BET_MIN + " до " + BET_MAX);
+  const cur = await jpCurrent();
+  return tx(async (c) => {
+    const row = toJp((await c.query(`SELECT * FROM jp_rounds WHERE id = $1 FOR UPDATE`, [cur.id])).rows[0]);
+    const now = Date.now();
+    if (row.betEnds && now >= row.betEnds) throw httpErr(409, "Рулетка уже крутится, жди следующий раунд");
+    const balance = await change(c, u.id, -bet);
+    if (balance === null) throw httpErr(402, "Не хватает монэток на ставку");
+    const r = await c.query(`INSERT INTO jp_bets (round_id, user_id, name, bet, at) VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (round_id, user_id) DO UPDATE SET bet = jp_bets.bet + EXCLUDED.bet RETURNING bet`, [row.id, u.id, u.name, bet, now]);
+    if (Number(r.rows[0].bet) > BET_MAX) throw httpErr(400, "За раунд не больше " + BET_MAX);
+    // the second player starts the countdown
+    if (!row.betEnds) {
+      const n = Number((await c.query(`SELECT count(*) FROM jp_bets WHERE round_id = $1`, [row.id])).rows[0].count);
+      if (n >= 2) await c.query(`UPDATE jp_rounds SET bet_ends = $2, ends = $3 WHERE id = $1`, [row.id, now + JP_BET_MS, now + JP_BET_MS + JP_SPIN_MS + JP_PAUSE_MS]);
+    }
+    return { balance };
+  });
+}
+// the last 20 pots that have been paid: who took each, with what chance, how big it was and what they got
+async function jpHistory() {
+  const rounds = (await pool.query(`SELECT id, winner FROM jp_rounds WHERE settled ORDER BY id DESC LIMIT 20`)).rows;
+  const out = [];
+  for (const x of rounds) {
+    const bets = await jpBets(pool, Number(x.id)), ch = jpChances(bets), k = bets.findIndex((b) => b.id === Number(x.winner));
+    if (k < 0) continue;
+    out.push({ id: Number(x.id), name: bets[k].name, bet: bets[k].bet, chance: ch[k], players: bets.length,
+      pot: bets.reduce((a, b) => a + b.bet, 0), prize: jpPrize(bets, bets[k].id) });
+  }
+  return { rounds: out };
+}
+// a player alone in the pot may take the stake back while nobody else has joined
+async function jpLeave(u) {
+  const cur = await jpCurrent();
+  return tx(async (c) => {
+    const row = toJp((await c.query(`SELECT * FROM jp_rounds WHERE id = $1 FOR UPDATE`, [cur.id])).rows[0]);
+    if (row.betEnds) throw httpErr(409, "Отсчёт уже идёт, ставку не забрать");
+    const r = await c.query(`DELETE FROM jp_bets WHERE round_id = $1 AND user_id = $2 RETURNING bet`, [row.id, u.id]);
+    const balance = r.rows[0] ? await change(c, u.id, Number(r.rows[0].bet)) : await balanceOf(c, u.id);
+    return { balance };
+  });
+}
+
 // ---------- coffins ----------
 const COFFIN_PRICES = [10, 50, 200, 1000, 5000];
 // [price multiple, chance %]: the first four pay less than the case, the other five (27% together) pay it back or more;
@@ -605,6 +830,10 @@ async function poll(u, body) {
   const out = {};
   if (body.crash) out.crash = await crashState(u);
   else { await crashCurrent(); await crashSettle(); }   // auto cash-outs still get paid while the player is elsewhere
+  if (body.wheel) out.wheel = await wheelState(u);
+  else await wheelSettle();                               // winners get paid while they are elsewhere too
+  if (body.jp) out.jp = await jpState(u);
+  else await jpSettle();
   if (body.duel) out.duel = await duelState(u);
   out.wins = await winsSince(body.since);
   out.balance = await balanceOf(pool, u.id);
@@ -699,7 +928,8 @@ async function login(body) {
 // ---------- HTTP ----------
 const routes = {
   "/api/slots/spin": slotsSpin, "/api/mines/start": minesStart, "/api/mines/open": minesOpen, "/api/mines/cashout": minesCash,
-  "/api/bj/deal": bjDeal, "/api/bj/action": bjAction, "/api/upg/spin": upgSpin, "/api/coffin/open": coffinOpen,
+  "/api/bj/deal": bjDeal, "/api/bj/action": bjAction, "/api/upg/spin": upgSpin, "/api/wheel/bet": wheelBet, "/api/wheel/history": wheelHistory,
+  "/api/jp/bet": jpBet, "/api/jp/leave": jpLeave, "/api/jp/history": jpHistory, "/api/coffin/open": coffinOpen,
   "/api/crash/bet": crashBet, "/api/crash/cash": crashCash, "/api/crash/unqueue": crashUnqueue,
   "/api/duel/join": duelJoin, "/api/duel/leave": duelLeave, "/api/poll": poll,
   "/api/deposit": deposit, "/api/deposit/check": depositCheck, "/api/withdraw": withdraw,
