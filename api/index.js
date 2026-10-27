@@ -433,7 +433,9 @@ const CRASH_K = 0.14, CRASH_BET_MS = 6000, CRASH_PAUSE_MS = 3000, CRASH_MAX = 10
 // real crash moment. For CRASH_GRACE_MS after it the round still reads as flying to everyone, the crash point
 // stays secret, and a cash-out is paid at the multiplier the player saw, if that was below the crash point.
 // Nobody can learn the point before cash-outs close, so the grace gives no edge to anyone.
-const CRASH_GRACE_MS = 1200;
+// The grace is kept short: the page never draws the flight past (poll time - grace), the last moment the
+// server has confirmed the bat alive, so a longer grace would only make the picture lag further behind.
+const CRASH_GRACE_MS = 300;
 const crashPoint = () => Math.min(CRASH_MAX, Math.max(1, Math.floor(EDGE / (1 - rnd()) * 100) / 100));
 const multAt = (r, now) => (now <= r.flyStart ? 1 : Math.exp(CRASH_K * (now - r.flyStart) / 1000));
 const toRound = (x) => ({ id: Number(x.id), betEnds: Number(x.bet_ends), flyStart: Number(x.fly_start), crashAt: Number(x.crash_at),
