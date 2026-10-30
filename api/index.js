@@ -31,9 +31,10 @@ const DEPOSIT_MIN = 10, DEPOSIT_MAX = 1000000;
 const CASH_FEE = 0.05;
 const afterFee = (amount) => Math.floor(amount * (1 - CASH_FEE));
 // share of every bet that comes back to players on average (return to player)
-const EDGE = 0.85;
+// raised by 10% on 2026-10-30 (was 0.85)
+const EDGE = 0.935;
 // cases keep more: on average 75% of the price comes back
-const COFFIN_EDGE = 0.75;
+const COFFIN_EDGE = 0.825;
 
 // ---------- randomness ----------
 const rnd = () => crypto.randomBytes(6).readUIntBE(0, 6) / 2 ** 48;
@@ -60,6 +61,8 @@ CREATE TABLE IF NOT EXISTS wins (id BIGSERIAL PRIMARY KEY, name TEXT, game TEXT,
 CREATE TABLE IF NOT EXISTS crash_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, fly_start BIGINT, crash_at BIGINT, ends BIGINT, point NUMERIC(10,2), settled BOOLEAN NOT NULL DEFAULT false);
 CREATE TABLE IF NOT EXISTS crash_bets (round_id BIGINT, user_id BIGINT, name TEXT, bet BIGINT, auto NUMERIC(10,2) NOT NULL DEFAULT 0, cashed NUMERIC(10,2), PRIMARY KEY (round_id, user_id));
 ALTER TABLE crash_bets ADD COLUMN IF NOT EXISTS cashed_at BIGINT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gift_fs BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS wheel_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, ends BIGINT, seg INT, settled BOOLEAN NOT NULL DEFAULT false);
 CREATE TABLE IF NOT EXISTS wheel_bets (round_id BIGINT, user_id BIGINT, name TEXT, pick INT, bet BIGINT, PRIMARY KEY (round_id, user_id, pick));
 CREATE TABLE IF NOT EXISTS jp_rounds (id BIGINT PRIMARY KEY, bet_ends BIGINT, ends BIGINT, winner BIGINT, land DOUBLE PRECISION, settled BOOLEAN NOT NULL DEFAULT false);
@@ -389,7 +392,7 @@ const bjAction = (u, body) => tx(async (c) => {
 // ---------- upgrader ----------
 const UPG_MULTS = [1.2, 1.5, 2, 3, 5, 10, 20, 50, 100];
 // the upgrader keeps more than the other games: on average 65% of the stake comes back
-const UPG_EDGE = 0.65;
+const UPG_EDGE = 0.715;
 const upgSpin = (u, body) => tx(async (c) => {
   const bet = Number(body.bet), mi = Number(body.mult);
   if (!validBet(bet)) throw httpErr(400, "Ставка от " + BET_MIN + " до " + BET_MAX);
@@ -404,16 +407,17 @@ const upgSpin = (u, body) => tx(async (c) => {
 });
 
 // ---------- wheel of fortune: shared rounds, like Crash ----------
-// 50 sectors: 20 × x2, 8 × x5, 4 × x10, 2 × x20 and 16 skulls (0). Everyone bets on one or more multipliers
+// 250 sectors: 110 × x2, 44 × x5, 22 × x10, 11 × x20 and 63 skulls (0). Everyone bets on one or more multipliers
 // during the betting window, then one spin decides for all: a bet on the sector's multiplier pays bet × it.
-// Chance = count / 50, so every pick returns 80% on average. The sector is drawn when the round is created
-// and leaves the server only when the bets close. The order here must match WHEEL in the game.
+// Chance = count / 250, so every pick returns 88% on average. The sector is drawn when the round is created
+// and leaves the server only when the bets close. The layout here must match WHEEL in the game.
 const WHEEL_PICKS = [2, 5, 10, 20];
 const WHEEL = (() => {
-  const w = new Array(50).fill(0), place = (mult, every, from) => { for (let i = from; i < 50; i += every) w[i] = mult; };
-  place(2, 5, 0); place(2, 5, 2); place(5, 25, 1); place(5, 25, 6); place(5, 25, 11); place(5, 25, 16);
-  place(10, 25, 3); place(10, 25, 13); place(20, 25, 21);
-  return w;
+  // the rarer multipliers are spread evenly first, the rest fill the next free sectors, skulls take what is left
+  const N = 250, w = new Array(N).fill(-1);
+  for (const [m, n] of [[20, 11], [10, 22], [5, 44], [2, 110]])
+    for (let k = 0; k < n; k++) { let i = Math.floor((k + 0.5) * N / n); while (w[i % N] !== -1) i++; w[i % N] = m; }
+  return w.map((v) => (v === -1 ? 0 : v));
 })();
 const WHEEL_BET_MS = 15000, WHEEL_SPIN_MS = 6000, WHEEL_PAUSE_MS = 3000;
 const toWheelRound = (x) => ({ id: Number(x.id), betEnds: Number(x.bet_ends), ends: Number(x.ends), seg: Number(x.seg) });
@@ -499,7 +503,7 @@ async function wheelBet(u, body) {
 // to their stake (up to BET_MAX in total) until it runs out. The win chance is the player's share of the pot,
 // capped at JP_CAP, the excess spread over the others by their shares. The winner gets their own stake back
 // plus the others' stakes minus JP_FEE. The draw happens once, at the first look after the countdown.
-const JP_BET_MS = 20000, JP_SPIN_MS = 7000, JP_PAUSE_MS = 4000, JP_CAP = 0.65, JP_FEE = 0.2;
+const JP_BET_MS = 20000, JP_SPIN_MS = 7000, JP_PAUSE_MS = 4000, JP_CAP = 0.65, JP_FEE = 0.12;
 function jpChances(bets) {
   const pot = bets.reduce((a, b) => a + b.bet, 0);
   let ch = bets.map((b) => b.bet / pot);
@@ -921,9 +925,26 @@ async function login(body) {
   // test launches play on a separate balance (stored under the negative id): test coins cost nothing,
   // so they must never mix with real ones or be paid out for real
   const test = launch.hu_mode === "test", uid = test ? -id : id;
-  const r = await pool.query(`INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING balance`, [uid, name]);
-  return { token: makeToken({ id: uid, hid: id, name, test }), user: { id: uid, name }, balance: Number(r.rows[0].balance), test, wins: await winsSince(0) };
+  const username = launch.hu_username ? String(launch.hu_username).slice(0, 40) : null;
+  const r = await pool.query(`INSERT INTO users (id, name, username) VALUES ($1, $2, $3)
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, username = coalesce(EXCLUDED.username, users.username) RETURNING balance`, [uid, name, username]);
+  const { gift, slots } = await giveGift(uid);
+  return { token: makeToken({ id: uid, hid: id, name, test }), user: { id: uid, name }, balance: Number(r.rows[0].balance), test, wins: await winsSince(0), gift, slots };
 }
+// a one-time gift for every player, those who join later included: GIFT_FS free spins in the slots at
+// GIFT_FS_BET, added on top of any free spins already running
+const GIFT_FS = 10, GIFT_FS_BET = 100;
+const giveGift = (uid) => tx(async (c) => {
+  const g = await c.query(`UPDATE users SET gift_fs = true WHERE id = $1 AND NOT gift_fs RETURNING id`, [uid]);
+  const st = (await loadGame(c, uid, "slots")) || { fsLeft: 0, fsWin: 0, bet: 0, sticky: null };
+  if (g.rows[0]) {
+    if (st.fsLeft > 0) st.fsLeft += GIFT_FS;
+    else Object.assign(st, { fsLeft: GIFT_FS, fsWin: 0, bet: GIFT_FS_BET, sticky: {} });
+    await saveGame(c, uid, "slots", st);
+  }
+  // unfinished free spins come back with the page, so they are not lost on a reload
+  return { gift: g.rows[0] ? GIFT_FS : 0, slots: { fsLeft: st.fsLeft, fsWin: st.fsWin, bet: st.bet } };
+});
 
 // ---------- HTTP ----------
 const routes = {
