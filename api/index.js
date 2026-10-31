@@ -628,6 +628,19 @@ async function jpLeave(u) {
   });
 }
 
+// ---------- leaderboard: who has topped up the most ----------
+// real players only (test launches live under negative ids); the sum of credited top-ups before the fee.
+// Kept for a minute, so a crowd opening the board does not query the database each time.
+let topCache = { at: 0, rows: [] };
+async function topDepositors() {
+  if (Date.now() - topCache.at > 60000) {
+    const r = await pool.query(`SELECT u.id, u.name, sum(p.amount) AS total FROM payments p JOIN users u ON u.id = p.user_id
+      WHERE p.credited AND u.id > 0 GROUP BY u.id, u.name ORDER BY total DESC LIMIT 10`);
+    topCache = { at: Date.now(), rows: r.rows.map((x) => ({ id: Number(x.id), name: x.name, total: Number(x.total) })) };
+  }
+  return { top: topCache.rows };
+}
+
 // ---------- coffins ----------
 const COFFIN_PRICES = [10, 50, 200, 1000, 5000];
 // [price multiple, chance %]: the first four pay less than the case, the other five (27% together) pay it back or more;
@@ -950,7 +963,7 @@ const giveGift = (uid) => tx(async (c) => {
 const routes = {
   "/api/slots/spin": slotsSpin, "/api/mines/start": minesStart, "/api/mines/open": minesOpen, "/api/mines/cashout": minesCash,
   "/api/bj/deal": bjDeal, "/api/bj/action": bjAction, "/api/upg/spin": upgSpin, "/api/wheel/bet": wheelBet, "/api/wheel/history": wheelHistory,
-  "/api/jp/bet": jpBet, "/api/jp/leave": jpLeave, "/api/jp/history": jpHistory, "/api/coffin/open": coffinOpen,
+  "/api/jp/bet": jpBet, "/api/jp/leave": jpLeave, "/api/jp/history": jpHistory, "/api/top": topDepositors, "/api/coffin/open": coffinOpen,
   "/api/crash/bet": crashBet, "/api/crash/cash": crashCash, "/api/crash/unqueue": crashUnqueue,
   "/api/duel/join": duelJoin, "/api/duel/leave": duelLeave, "/api/poll": poll,
   "/api/deposit": deposit, "/api/deposit/check": depositCheck, "/api/withdraw": withdraw,
